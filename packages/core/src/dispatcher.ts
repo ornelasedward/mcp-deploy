@@ -39,6 +39,8 @@ export interface DispatcherDeps {
   loadSecrets?: (projectId: string) => Promise<Record<string, string>>;
   /** Persist the run row (and enforce idempotency at the data layer in prod). */
   onRunComplete?: (r: RunResult & { source: RunSource; orgId: string }) => void | Promise<void>;
+  /** Free tier / subscription gates (throws BillingLimitError). */
+  beforeRun?: (req: DispatchRequest) => void | Promise<void>;
   bridgeRegistry?: BridgeRegistry;
   defaultEgressAllowlist?: string[];
 }
@@ -70,6 +72,8 @@ export function createDispatcher(deps: DispatcherDeps) {
     req: DispatchRequest<I>,
     options?: DispatchOptions,
   ): Promise<RunResult<O>> {
+    await deps.beforeRun?.(req);
+
     const runId = req.idempotencyKey ?? randomUUID();
     const started = Date.now();
     let costUsd = 0;

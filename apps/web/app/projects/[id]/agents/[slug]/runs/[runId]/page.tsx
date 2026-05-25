@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { apiFetch, devOrgId } from "../../../../../../../lib/api";
+import { apiFetch, devOrgId } from "../../../../../../../lib/api-server";
 import { formatDuration, formatTime, formatUsd } from "../../../../../../../lib/format";
 import { TraceTimeline } from "../../../../../../../components/trace-timeline";
 import { HitlApprove } from "../../../../../../../components/hitl-approve";

@@ -6,6 +6,7 @@ import {
   hashApiKey,
   isOrgApiKey,
   verifyClerkToken,
+  verifySamlSession,
 } from "@platform/auth";
 
 declare module "hono" {
@@ -19,7 +20,13 @@ export interface AuthMiddlewareOpts {
   orgStore?: OrgStore;
 }
 
-const PUBLIC_PATHS = ["/health", "/api/inngest", "/v1/webhooks/github"];
+const PUBLIC_PATHS = [
+  "/health",
+  "/api/inngest",
+  "/v1/webhooks/github",
+  "/v1/webhooks/stripe",
+  "/v1/auth/saml",
+];
 
 function isPublicApiPath(path: string) {
   return path.startsWith("/v1/public/") || path.startsWith("/internal/bridge/");
@@ -43,6 +50,31 @@ export function createAuthMiddleware(opts: AuthMiddlewareOpts) {
       const orgId = c.req.header("x-org-id") ?? config.DEFAULT_ORG_ID;
       c.set("auth", { orgId, role: "owner", method: "platform", userId: "platform" });
       return next();
+    }
+
+    // SAML session token (enterprise BYOC)
+    const samlSecret = config.SAML_SESSION_SECRET;
+    if (
+      config.SAML_ENABLED &&
+      samlSecret &&
+      token &&
+      (authMode === "saml" || authMode === "mixed")
+    ) {
+      const session = verifySamlSession(token, samlSecret);
+      if (session) {
+        const orgId = c.req.header("x-org-id") ?? session.orgId;
+        if (orgStore) {
+          await orgStore.ensureOrg(orgId, orgId);
+          await orgStore.upsertMember(orgId, session.sub, "owner");
+        }
+        c.set("auth", {
+          orgId,
+          userId: session.sub,
+          role: "owner",
+          method: "saml",
+        });
+        return next();
+      }
     }
 
     // Per-org API keys (agd_live_...)

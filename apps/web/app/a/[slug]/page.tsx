@@ -1,5 +1,5 @@
 import PlaygroundClient from "./playground-client";
-import { apiBase } from "../../../lib/api";
+import { apiBase } from "../../../lib/api-shared";
 
 export default async function PlaygroundPage({
   params,

@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentd.fullname" . }}-web
+  labels:
+    {{- include "agentd.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+  selector:
+    app: {{ include "agentd.fullname" . }}-web
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentd.fullname" . }}-web
+  labels:
+    {{- include "agentd.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.web.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "agentd.fullname" . }}-web
+  template:
+    metadata:
+      labels:
+        app: {{ include "agentd.fullname" . }}-web
+    spec:
+      containers:
+        - name: web
+          image: "{{ .Values.web.image.repository }}:{{ .Values.web.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 3000
+          env:
+            - name: API_BASE
+              value: http://{{ include "agentd.fullname" . }}-api:8787
+            - name: NEXT_PUBLIC_API_BASE
+              value: {{ include "agentd.apiUrl" . | quote }}
+            {{- range $k, $v := .Values.web.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.api.secrets.existingSecret | default (printf "%s-secrets" (include "agentd.fullname" .)) }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 30

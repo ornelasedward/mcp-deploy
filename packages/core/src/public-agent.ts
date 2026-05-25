@@ -30,3 +30,18 @@ export async function resolvePublicAgent(
   }
   return findPublicAgentInRegistry(registry, slug);
 }
+
+/** Opt-in public directory: agents with `public: true` and MCP surface enabled. */
+export function listDirectoryAgents(
+  registry: AgentRegistry,
+): { agent: ResolvedAgent; orgId: string }[] {
+  const out: { agent: ResolvedAgent; orgId: string }[] = [];
+  for (const orgId of registry.orgIds()) {
+    for (const agent of registry.all(orgId)) {
+      if (agent.public && isEnabled(agent, "mcp")) {
+        out.push({ agent, orgId });
+      }
+    }
+  }
+  return out.sort((a, b) => a.agent.name.localeCompare(b.agent.name));
+}

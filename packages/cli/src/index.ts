@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 /** Developer deploy CLI: `platform deploy`. Detects the framework, then triggers a deploy. */
-import { detectFramework } from "@platform/detect";
+import { detectFrameworkInfo } from "@platform/detect";
+import { planFrameworkImport } from "@platform/build";
 
 const BASE = process.env.PLATFORM_BASE_URL ?? "http://localhost:8787";
 
 async function deploy(dir: string) {
-  const framework = await detectFramework(dir);
-  console.log(`detected framework: ${framework}`);
+  const info = await detectFrameworkInfo(dir);
+  const plan = await planFrameworkImport(dir);
+  console.log(`detected framework: ${info.framework}`);
+  if (plan && info.framework !== "convention") {
+    console.log(`import adapter: ${plan.framework} → entry ${plan.entryPath}`);
+  }
   const apiKey = process.env.PLATFORM_API_KEY ?? process.env.API_KEY ?? "dev";
   const res = await fetch(`${BASE}/v1/deploy`, {
     method: "POST",
@@ -14,7 +19,7 @@ async function deploy(dir: string) {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ projectDir: dir, dir, framework }),
+    body: JSON.stringify({ projectDir: dir, dir, framework: info.framework }),
   });
   const text = await res.text();
   try {

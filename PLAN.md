@@ -37,7 +37,7 @@ A stranger can:
 | **P11** | T3 | Framework adapters | OpenAI Agents SDK, Mastra, LangGraph import paths |
 | **P12** | T3 | MCP growth loop | Claude one-click; docs; optional registry |
 | **P13** | T3 | Billing | Stripe platform fee + LLM pass-through line items |
-| **P14** | T3 | Enterprise BYOC | Self-host chart; customer VPC; audit exports |
+| **P14** | T3 | Enterprise BYOC ✅ | Self-host chart; customer VPC; audit exports |
 
 ---
 
@@ -219,9 +219,9 @@ A stranger can:
 
 **Tasks:**
 
-- [ ] Detect: OpenAI Agents SDK, Mastra, LangGraph, Vercel AI SDK
-- [ ] Import adapters produce `defineAgent`-compatible manifest
-- [ ] Docs per framework “deploy in 2 minutes”
+- [x] Detect: OpenAI Agents SDK, Mastra, LangGraph, Vercel AI SDK
+- [x] Import adapters produce `defineAgent`-compatible manifest
+- [x] Docs per framework “deploy in 2 minutes”
 
 **Exit:** User does not rewrite agent to `defineAgent` manually if already on supported SDK.
 
@@ -233,39 +233,43 @@ A stranger can:
 
 **Tasks:**
 
-- [ ] “Add to Claude Desktop” deep link with MCP JSON
-- [ ] Public agent directory (opt-in)
-- [ ] MCP server card: tools list, schema, example prompt
+- [x] “Add to Claude Desktop” deep link with MCP JSON
+- [x] Public agent directory (opt-in)
+- [x] MCP server card: tools list, schema, example prompt
 
 **Exit:** 40-second demo: push → Claude calls tool with zero config.
 
 ---
 
-## P13 — Billing (Tier 3)
+## P13 — Billing (Tier 3) ✅
 
-**Packages:** `apps/api`, `apps/web`, `packages/db`
+**Packages:** `packages/billing`, `apps/api`, `apps/web`, `packages/db`
 
 **Tasks:**
 
-- [ ] Stripe: subscription + metered LLM pass-through
-- [ ] Invoice line items: platform fee vs model cost
-- [ ] Free tier limits (runs/month, surfaces)
+- [x] Stripe: subscription + **Billing Meters** LLM pass-through (`billing.meterEvents.create`)
+- [x] Invoice line items: platform fee vs model cost (Checkout: licensed + metered prices)
+- [x] Free tier limits (100 runs/month; surface cap)
 
 **Exit:** Can charge without manual invoicing.
 
+**Setup:** [infra/billing/STRIPE.md](./infra/billing/STRIPE.md)
+
 ---
 
-## P14 — Enterprise BYOC (Tier 3)
+## P14 — Enterprise BYOC (Tier 3) ✅
 
 **Deliverables:** Helm chart, docs
 
 **Tasks:**
 
-- [ ] Self-host bundle: API + web + Postgres + Inngest + optional E2B
-- [ ] SSO (SAML)
-- [ ] Audit log export, data residency notes
+- [x] Self-host bundle: API + web + Postgres + Inngest + optional E2B (`infra/helm/agentd`)
+- [x] SSO (SAML SP — login, ACS, metadata, session token)
+- [x] Audit log export (`GET /v1/orgs/:orgId/audit/export`), data residency notes
 
 **Exit:** Enterprise pilot can deploy in their VPC.
+
+**Docs:** [infra/byoc/README.md](./infra/byoc/README.md), [DATA_RESIDENCY.md](./infra/byoc/DATA_RESIDENCY.md)
 
 ---
 
@@ -306,7 +310,7 @@ A stranger can:
 
 **P7:** Complete `E2BRuntime`: snapshot hydration, ctx.llm/trace RPC bridge, keep gateway on platform side.
 
-**P13:** Stripe Checkout + metered `usage_events` billing with separate platform fee line item.
+**P13:** Stripe Checkout + Billing Meters (`meterEvents`) for LLM pass-through; separate platform fee line item.
 
 ---
 

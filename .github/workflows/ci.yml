@@ -5,22 +5,62 @@ on:
     branches: [main, master]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check:
+  smoke:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: local
+            runtime: local
+            e2b_mock: ""
+          - name: e2b-mock
+            runtime: e2b
+            e2b_mock: "true"
+    name: smoke (${{ matrix.name }})
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm smoke
-      - run: pnpm smoke
+      - name: End-to-end smoke
+        run: pnpm smoke
         env:
-          RUNTIME: e2b
-          E2B_MOCK: "true"
+          GATEWAY: local
+          RUNTIME: ${{ matrix.runtime }}
+          E2B_MOCK: ${{ matrix.e2b_mock }}
+          DURABLE: local
+          TRACE_STORE: memory
+
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @platform/web build
+        env:
+          NEXT_PUBLIC_API_BASE: http://localhost:8787
+          NEXT_PUBLIC_API_KEY: ci-smoke-key
+          NEXT_PUBLIC_DEV_ORG_ID: org_dev
+
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - run: helm lint ./infra/helm/agentd

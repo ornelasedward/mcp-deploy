@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { apiFetch, devOrgId } from "../../../../../lib/api";
+import { apiFetch, devOrgId } from "../../../../../lib/api-server";
 import { formatPct, formatUsd } from "../../../../../lib/format";
 import { ConnectPanel } from "../../../../../components/connect-panel";
+import { McpServerCard, type McpServerCardData } from "../../../../../components/mcp-server-card";
 import { RunsTable } from "../../../../../components/runs-table";
 import { SurfaceToggles } from "../../../../../components/surface-toggles";
 
@@ -33,6 +34,7 @@ type AgentDetail = {
     createdAt: string;
   }[];
   connect: { surfaces: string[]; snippets: Record<string, string> };
+  mcp?: McpServerCardData;
 };
 
 export default async function AgentDashboardPage({
@@ -106,6 +108,8 @@ export default async function AgentDashboardPage({
       />
 
       <ConnectPanel surfaces={data.connect.surfaces} snippets={data.connect.snippets} />
+
+      {data.mcp && <McpServerCard card={data.mcp} />}
 
       <section style={{ marginTop: 32 }}>
         <h2>Recent runs</h2>

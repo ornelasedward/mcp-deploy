@@ -87,6 +87,20 @@ export const runEvents = pgTable("run_events", {
   ts: timestamp("ts").defaultNow().notNull(),
 }, (t) => ({ byRun: index("event_run_idx").on(t.runId) }));
 
+export const orgBilling = pgTable("org_billing", {
+  orgId: text("org_id").primaryKey().references(() => orgs.id),
+  plan: text("plan").notNull().default("free"),
+  status: text("status").notNull().default("active"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  runsThisPeriod: integer("runs_this_period").notNull().default(0),
+  periodStart: timestamp("period_start").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  byCustomer: uniqueIndex("org_billing_stripe_customer_idx").on(t.stripeCustomerId),
+}));
+
 export const budgets = pgTable("budgets", {
   orgId: text("org_id").primaryKey().references(() => orgs.id),
   monthlyCapUsd: doublePrecision("monthly_cap_usd").notNull(),

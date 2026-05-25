@@ -11,6 +11,7 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
+    "typecheck:ci": "tsx scripts/typecheck.ts",
     "smoke": "tsx scripts/smoke.ts",
     "api": "tsx apps/api/src/index.ts",
     "web": "pnpm --filter @platform/web dev",
@@ -30,8 +31,11 @@
   "dependencies": {
     "@example/support-triage": "workspace:*",
     "@platform/core": "workspace:*",
+    "@platform/db": "workspace:*",
     "@platform/evals": "workspace:*",
     "@platform/mcp": "workspace:*",
+    "@platform/auth": "workspace:*",
+    "@platform/billing": "workspace:*",
     "@platform/build": "workspace:*",
     "@platform/config": "workspace:*",
     "zod": "catalog:"

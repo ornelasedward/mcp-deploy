@@ -30,11 +30,15 @@ ${orgHdr}  -H 'content-type: application/json' \\
   -d '{ "input": { /* matches input schema */ } }'`;
   }
   if (isEnabled(agent, "mcp")) {
-    out.mcp = JSON.stringify(
-      { mcpServers: { [agent.slug]: { url: `${baseUrl}/mcp/${agent.slug}` } } },
-      null,
-      2,
-    );
+    const mcpUrl = `${baseUrl.replace(/\/$/, "")}/mcp/${agent.slug}`;
+    const headers: Record<string, string> = {};
+    if (opts?.apiKey && opts.apiKey !== "$API_KEY") {
+      headers.authorization = `Bearer ${opts.apiKey}`;
+    }
+    if (opts?.orgId) headers["x-org-id"] = opts.orgId;
+    const entry: { url: string; headers?: Record<string, string> } = { url: mcpUrl };
+    if (Object.keys(headers).length > 0) entry.headers = headers;
+    out.mcp = JSON.stringify({ mcpServers: { [agent.slug]: entry } }, null, 2);
   }
   if (isEnabled(agent, "cli")) {
     out.cli = `npx @platform/run ${agent.slug} --input '{ ... }'`;

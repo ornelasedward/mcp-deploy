@@ -6,9 +6,11 @@ import {
   PostgresTraceStore,
   recordUsage,
   BudgetStore,
+  BillingStore,
   SecretsStore,
   type Database,
 } from "@platform/db";
+import { BillingService } from "@platform/billing";
 import {
   ExportingTraceStore,
   InMemoryTraceStore,
@@ -34,7 +36,7 @@ export { AgentRegistry } from "./registry";
 export { IpRateLimiter, clientIp } from "./rate-limit";
 export { streamAgentRun } from "./stream-run";
 export { sseResponse } from "./sse";
-export { findPublicAgentInRegistry, resolvePublicAgent } from "./public-agent";
+export { findPublicAgentInRegistry, resolvePublicAgent, listDirectoryAgents } from "./public-agent";
 export { enqueueBackground };
 export { checkEvalGate } from "@platform/evals";
 export { ExportingTraceStore, InMemoryTraceStore } from "@platform/trace";
@@ -50,6 +52,8 @@ export interface Platform {
   bridgeRegistry: BridgeRegistry;
   bridgeSecret: string;
   budgetStore: BudgetStore;
+  billingStore: BillingStore;
+  billing: BillingService;
   secretsStore: SecretsStore;
   resolveBudget: (orgId: string) => Promise<Budget>;
 }
@@ -101,6 +105,8 @@ export async function buildPlatform(env: NodeJS.ProcessEnv = process.env): Promi
     perRunCapUsd: config.DEFAULT_PER_RUN_USD_CAP,
   });
   const secretsStore = new SecretsStore(db, config.SECRETS_ENCRYPTION_KEY);
+  const billingStore = new BillingStore(db);
+  const billing = new BillingService({ config, store: billingStore });
   const gateway = createGateway(config.GATEWAY, budgetStore);
   const mockE2b =
     config.E2B_MOCK === "true" ||
@@ -151,9 +157,14 @@ export async function buildPlatform(env: NodeJS.ProcessEnv = process.env): Promi
     bridgeRegistry: runtimeBundle.bridgeRegistry,
     defaultEgressAllowlist: parseEgressAllowlist(config.DEFAULT_EGRESS_ALLOWLIST),
     loadSecrets: async (projectId) => secretsStore.loadForProject(projectId),
+    beforeRun: async (req) => {
+      await billing.assertCanRun(req.orgId, req.agent.distribute);
+      await billing.recordRunStarted(req.orgId);
+    },
     onUsage: async ({ runId, orgId, usage }) => {
       await budgetStore.addSpend(orgId, usage.costUsd);
       if (db) await recordUsage(db, { runId, orgId, usage });
+      await billing.recordLlmUsage(orgId, runId, usage.costUsd);
     },
     onRunComplete,
   });
@@ -169,6 +180,8 @@ export async function buildPlatform(env: NodeJS.ProcessEnv = process.env): Promi
     bridgeRegistry: runtimeBundle.bridgeRegistry,
     bridgeSecret: config.BRIDGE_SECRET,
     budgetStore,
+    billingStore,
+    billing,
     secretsStore,
     resolveBudget: (orgId: string) => budgetStore.resolveBudget(orgId),
   };

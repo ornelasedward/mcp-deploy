@@ -12,6 +12,13 @@ export { recordUsage } from "./usage-store";
 export { BudgetStore } from "./budget-store";
 export { SecretsStore } from "./secrets-store";
 export { getProductionEvalBaseline } from "./eval-store";
+export { BillingStore, type OrgBillingRow, type BillingPlan, type BillingStatus } from "./billing-store";
+export {
+  exportAuditLog,
+  auditLineToJsonl,
+  type AuditExportOptions,
+  type AuditLine,
+} from "./audit-export";
 
 export type Database = ReturnType<typeof drizzle<typeof schema>>;
 

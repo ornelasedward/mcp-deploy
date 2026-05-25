@@ -1,0 +1,42 @@
+name: E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "packages/**"
+      - "apps/**"
+      - "scripts/smoke.ts"
+      - "examples/**"
+      - ".github/workflows/e2e.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: local
+            runtime: local
+            e2b_mock: ""
+          - name: e2b-mock
+            runtime: e2b
+            e2b_mock: "true"
+    name: smoke (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Platform smoke (end-to-end)
+        run: pnpm smoke
+        env:
+          GATEWAY: local
+          RUNTIME: ${{ matrix.runtime }}
+          E2B_MOCK: ${{ matrix.e2b_mock }}
+          DURABLE: local
+          TRACE_STORE: memory

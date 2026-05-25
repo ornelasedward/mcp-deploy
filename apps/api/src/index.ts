@@ -12,7 +12,7 @@ import {
   sseResponse,
   streamAgentRun,
 } from "@platform/core";
-import { handleMcpHttp } from "@platform/mcp";
+import { handleMcpHttp, buildMcpServerCard } from "@platform/mcp";
 import { enqueueBackground, inngest } from "@platform/durable";
 import type { Config } from "@platform/config";
 import {
@@ -21,14 +21,20 @@ import {
   runDeployEvals,
   formatEvalPrComment,
   postGithubPrComment,
+  detectFrameworkInfo,
+  planFrameworkImport,
 } from "@platform/build";
 import { DashboardStore, OrgStore, getProductionEvalBaseline } from "@platform/db";
 import { canDeploy, canRun } from "@platform/auth";
 import { handleBridgeRequest } from "@platform/runtime";
 import { createAuthMiddleware, requireRole } from "./middleware/auth";
+import { BillingLimitError } from "@platform/billing";
 import { orgRoutes } from "./routes/orgs";
 import { dashboardRoutes } from "./routes/dashboard";
 import { publicRoutes } from "./routes/public";
+import { billingRoutes } from "./routes/billing";
+import { auditRoutes } from "./routes/audit";
+import { samlRoutes } from "./routes/saml";
 import { inngestHandler } from "./inngest";
 
 const platform = await buildPlatform();
@@ -50,6 +56,8 @@ async function queueAgentRun(opts: {
 }) {
   const agent = platform.registry.get(opts.slug, opts.orgId);
   if (!agent) throw new Error(`agent not found: ${opts.slug}`);
+
+  await platform.billing.assertCanRun(opts.orgId, agent.distribute);
 
   await platform.trace.beginRun?.({
     runId: opts.runId,
@@ -99,6 +107,19 @@ await hydrateRegistry(platform.registry, {
   defaultOrgId: platform.config.DEFAULT_ORG_ID,
 });
 
+app.post("/v1/webhooks/stripe", async (c) => {
+  const sig = c.req.header("stripe-signature");
+  if (!sig) return c.json({ error: "missing stripe-signature" }, 400);
+  try {
+    const raw = await c.req.text();
+    await platform.billing.handleWebhook(raw, sig);
+    return c.json({ received: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "webhook failed";
+    return c.json({ error: msg }, 400);
+  }
+});
+
 app.use(
   "*",
   cors({
@@ -128,7 +149,15 @@ app.all("/internal/bridge/:runId", async (c) =>
   handleBridgeRequest(platform.bridgeRegistry, platform.bridgeSecret, c.req.raw),
 );
 
+app.route("/", samlRoutes(platform.config, orgStore));
+
 app.use("*", createAuthMiddleware({ config: platform.config, orgStore }));
+
+app.route("/", billingRoutes(platform.billing, platform.config.WEB_BASE_URL));
+
+if (platform.db) {
+  app.route("/", auditRoutes(platform.db));
+}
 
 app.route("/", publicRoutes(platform, dashboardStore, publicRateLimiter));
 
@@ -175,6 +204,7 @@ app.get("/health", (c) =>
       durable: platform.config.DURABLE,
       trace: platform.config.TRACE_STORE,
       db: Boolean(platform.db),
+      saml: Boolean(platform.config.SAML_ENABLED),
       artifactsDir: platform.config.ARTIFACTS_DIR,
     },
   }),
@@ -248,16 +278,23 @@ app.post("/v1/agents/:slug/run", async (c) => {
   }
 
   const budget = await resolveBudget(auth.orgId);
-  const result = await platform.dispatch({
-    agent,
-    input,
-    source: "http",
-    orgId: auth.orgId,
-    idempotencyKey,
-    budget,
-    projectId,
-  });
-  return c.json(result, result.status === "succeeded" ? 200 : 500);
+  try {
+    const result = await platform.dispatch({
+      agent,
+      input,
+      source: "http",
+      orgId: auth.orgId,
+      idempotencyKey,
+      budget,
+      projectId,
+    });
+    return c.json(result, result.status === "succeeded" ? 200 : 500);
+  } catch (e) {
+    if (e instanceof BillingLimitError) {
+      return c.json({ error: e.message, code: e.code }, 402);
+    }
+    throw e;
+  }
 });
 
 app.post("/v1/agents/:slug/run/stream", async (c) => {
@@ -391,6 +428,30 @@ app.get("/v1/agents/:slug/runs/:runId/trace", async (c) => {
   return c.json({ runId: c.req.param("runId"), events });
 });
 
+app.get("/v1/agents/:slug/mcp", async (c) => {
+  const auth = c.get("auth");
+  const agent = platform.registry.get(c.req.param("slug"), auth.orgId);
+  if (!agent || !isEnabled(agent, "mcp")) return c.json({ error: "not found" }, 404);
+
+  let keyHint: string | undefined;
+  if (orgStore) {
+    const keys = await orgStore.listApiKeys(auth.orgId).catch(() => []);
+    if (keys[0]?.keyPrefix && platform.config.API_KEY) {
+      keyHint = platform.config.API_KEY;
+    }
+  } else if (platform.config.API_KEY) {
+    keyHint = platform.config.API_KEY;
+  }
+
+  const card = buildMcpServerCard(
+    agent,
+    platform.config.PLATFORM_BASE_URL,
+    platform.config.WEB_BASE_URL,
+    { apiKey: keyHint, orgId: auth.orgId },
+  );
+  return c.json(card);
+});
+
 app.get("/v1/agents/:slug/connect", async (c) => {
   const auth = c.get("auth");
   const agent = platform.registry.get(c.req.param("slug"), auth.orgId);
@@ -419,6 +480,23 @@ app.get("/v1/agents/:slug/connect", async (c) => {
     surfaces: agent.distribute,
     snippets: urls,
     pr: pr ? Number(pr) : undefined,
+  });
+});
+
+app.post("/v1/detect-framework", async (c) => {
+  const auth = c.get("auth");
+  const body = await c.req.json<{ projectDir?: string; dir?: string }>();
+  const projectDir = body.projectDir ?? body.dir;
+  if (!projectDir) return c.json({ error: "projectDir required" }, 400);
+
+  const info = await detectFrameworkInfo(projectDir);
+  const plan = await planFrameworkImport(projectDir);
+  return c.json({
+    orgId: auth.orgId,
+    framework: info.framework,
+    entryPath: info.entryPath,
+    plan: plan ?? undefined,
+    docsPath: "/docs/frameworks/README.md",
   });
 });
 

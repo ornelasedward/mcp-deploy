@@ -143,6 +143,32 @@ export class DashboardStore {
     return rows[0] ?? null;
   }
 
+  async listPublicDirectoryAgents(webBaseUrl: string) {
+    const rows = await this.db
+      .select({
+        orgId: projects.orgId,
+        projectId: agents.projectId,
+        slug: agents.slug,
+        name: agents.name,
+        description: agents.name,
+        distribute: agents.distribute,
+      })
+      .from(agents)
+      .innerJoin(projects, eq(agents.projectId, projects.id))
+      .where(eq(agents.publicPlayground, true));
+
+    return rows
+      .filter((r) => normalizeSurfaces(r.distribute).includes("mcp"))
+      .map((r) => ({
+        slug: r.slug,
+        name: r.name,
+        orgId: r.orgId,
+        projectId: r.projectId,
+        playgroundUrl: `${webBaseUrl.replace(/\/$/, "")}/a/${r.slug}`,
+        mcpUrl: null as string | null,
+      }));
+  }
+
   async findPublicAgentBySlug(slug: string) {
     const rows = await this.db
       .select({

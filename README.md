@@ -144,6 +144,16 @@ Full phased plan: **[PLAN.md](./PLAN.md)** — P0–P14 from shippable SaaS (git
 
 **Observability + eval gates (P10):** `TRACE_EXPORT=langfuse|otel` fans out `run_events`. Eval cases support `llm-judge` grader. Deploy/webhook runs evals, blocks on regression (`EVAL_REGRESSION_DELTA`), and posts a PR comment with score diff vs production baseline.
 
-**Start here:** P11 (framework adapters — OpenAI Agents SDK, Mastra, LangGraph import paths).
+**Framework adapters (P11):** Deploy LangGraph, OpenAI Agents, Mastra, or Vercel AI SDK repos without hand-writing `agent.config.ts` — build generates `.agentd/agent.config.ts`. See [docs/frameworks](./docs/frameworks/README.md).
+
+**MCP growth (P12):** Public directory at `/explore` (agents with `public: true` + MCP). MCP server card + `claude://mcp-install?config=…` deep link on `/add/claude/{slug}`. API: `GET /v1/public/directory`, `GET /v1/agents/:slug/mcp`.
+
+**Billing (P13):** `packages/billing` — Stripe Checkout (platform fee) + **Billing Meters** for LLM pass-through (micro-USD). Free tier: 100 runs/month. API: `GET /v1/orgs/:orgId/billing`, checkout/portal, `POST /v1/webhooks/stripe`. Dashboard: `/dashboard/billing`. Setup: [infra/billing/STRIPE.md](./infra/billing/STRIPE.md).
+
+**Enterprise BYOC (P14):** Helm chart at `infra/helm/agentd` (API + web + Postgres + ingress). SAML SSO (`/v1/auth/saml/*`), audit export (`/v1/orgs/:orgId/audit/export`). See [infra/byoc/README.md](./infra/byoc/README.md) and [DATA_RESIDENCY.md](./infra/byoc/DATA_RESIDENCY.md).
+
+**Roadmap complete (P0–P14).** Extend tiers per product needs; keep `pnpm smoke` green.
 
 Interfaces are fixed; smoke test is the regression net.
+
+**CI (GitHub Actions):** `.github/workflows/ci.yml` — `pnpm smoke` (local + E2B mock matrix), web build, Helm lint. Uses `packageManager` from `package.json` (`pnpm@11.3.0`). Optional: `.github/workflows/e2e.yml` on PRs touching runtime code.

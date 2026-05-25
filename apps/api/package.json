@@ -9,6 +9,7 @@
     "@hono/node-server": "catalog:",
     "@modelcontextprotocol/sdk": "catalog:",
     "@platform/auth": "workspace:*",
+    "@platform/billing": "workspace:*",
     "@platform/config": "workspace:*",
     "@platform/core": "workspace:*",
     "@platform/runtime": "workspace:*",

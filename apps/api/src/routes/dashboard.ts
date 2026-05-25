@@ -3,7 +3,8 @@ import type { DashboardStore, OrgStore, BudgetStore } from "@platform/db";
 import type { TraceStore } from "@platform/trace";
 import type { AuthContext } from "@platform/auth";
 import { canDeploy } from "@platform/auth";
-import { connectSnippets } from "@platform/core";
+import { connectSnippets, isEnabled } from "@platform/core";
+import { buildMcpServerCard } from "@platform/mcp";
 import type { ResolvedAgent, Surface } from "@platform/sdk";
 import { SURFACES } from "@platform/sdk";
 import { requireRole } from "../middleware/auth";
@@ -70,6 +71,14 @@ export function dashboardRoutes(opts: DashboardRoutesOpts) {
         })
       : {};
 
+    const mcpCard =
+      resolved && isEnabled(resolved, "mcp")
+        ? buildMcpServerCard(resolved, config.PLATFORM_BASE_URL, config.WEB_BASE_URL, {
+            apiKey: config.API_KEY,
+            orgId,
+          })
+        : undefined;
+
     return c.json({
       agent: {
         id: row.id,
@@ -84,6 +93,7 @@ export function dashboardRoutes(opts: DashboardRoutesOpts) {
       lastDeploy,
       recentRuns,
       connect: { surfaces: resolved?.distribute ?? row.distribute, snippets },
+      mcp: mcpCard,
     });
   });
 

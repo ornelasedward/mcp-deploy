@@ -14,6 +14,8 @@ services:
       - ./packages/db/migrations/0002_auth.sql:/docker-entrypoint-initdb.d/03_auth.sql
       - ./packages/db/migrations/0003_runs_agent_slug.sql:/docker-entrypoint-initdb.d/04_runs_agent_slug.sql
       - ./packages/db/migrations/0004_public_playground.sql:/docker-entrypoint-initdb.d/05_public_playground.sql
+      - ./packages/db/migrations/0005_secrets.sql:/docker-entrypoint-initdb.d/06_secrets.sql
+      - ./packages/db/migrations/0006_billing.sql:/docker-entrypoint-initdb.d/07_billing.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U agentd"]
       interval: 5s

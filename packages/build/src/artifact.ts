@@ -1,34 +1,12 @@
-import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { detectFramework } from "@platform/detect";
 import { loadAgentFromPath } from "./load-agent";
 import type { ResolvedAgent } from "@platform/sdk";
 import { cloneAtCommit } from "./clone";
+import { adaptRepository } from "./adapters/index";
+import { findAgentRoot } from "./find-agent-root";
 
-const AGENT_CONFIG = "agent.config.ts";
-
-/** Walk up to depth 4 looking for agent.config.ts. */
-export async function findAgentRoot(searchRoot: string): Promise<string | null> {
-  const queue = [{ dir: resolve(searchRoot), depth: 0 }];
-  while (queue.length > 0) {
-    const { dir, depth } = queue.shift()!;
-    try {
-      const entries = await readdir(dir, { withFileTypes: true });
-      if (entries.some((e) => e.isFile() && e.name === AGENT_CONFIG)) {
-        return dir;
-      }
-      if (depth >= 4) continue;
-      for (const e of entries) {
-        if (e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules") {
-          queue.push({ dir: join(dir, e.name), depth: depth + 1 });
-        }
-      }
-    } catch {
-      // skip unreadable
-    }
-  }
-  return null;
-}
+export { findAgentRoot };
 
 export interface BuildFromGitOptions {
   deploymentId: string;
@@ -52,11 +30,29 @@ export interface ArtifactBuildResult {
   commitSha?: string;
 }
 
+async function resolveAgent(sourceDir: string) {
+  const adapted = await adaptRepository(sourceDir);
+  if (adapted) {
+    return {
+      agentRoot: adapted.agentRoot,
+      agent: adapted.agent,
+      framework: adapted.framework,
+    };
+  }
+  const root = await findAgentRoot(sourceDir);
+  if (!root) {
+    throw new Error(
+      "No agent.config.ts and no supported framework (LangGraph, OpenAI Agents, Mastra, Vercel AI SDK)",
+    );
+  }
+  const agent = await loadAgentFromPath(root);
+  return { agentRoot: root, agent, framework: "convention" as const };
+}
+
 /** Copy a local directory into the artifact store (CLI / manual deploy). */
 export async function buildFromLocalPath(opts: BuildFromPathOptions): Promise<ArtifactBuildResult> {
   const source = resolve(opts.sourceDir);
-  const agent = await loadAgentFromPath(source);
-  const framework = await detectFramework(source);
+  const { agentRoot, agent, framework } = await resolveAgent(source);
 
   const artifactDir = join(resolve(opts.artifactsDir), opts.deploymentId);
   const sourceCopy = join(artifactDir, "source");
@@ -66,17 +62,20 @@ export async function buildFromLocalPath(opts: BuildFromPathOptions): Promise<Ar
     filter: (src) => !src.replace(/\\/g, "/").includes("/node_modules/"),
   });
 
-  const agentRoot = (await findAgentRoot(sourceCopy)) ?? sourceCopy;
+  const copyAgentRoot =
+    (await findAgentRoot(sourceCopy)) ??
+    (framework !== "convention" ? join(sourceCopy, ".agentd") : sourceCopy);
+
   await writeFile(
     join(artifactDir, "manifest.json"),
     JSON.stringify({
-      agentRoot,
+      agentRoot: copyAgentRoot,
       slug: agent.slug,
       framework,
       devSourcePath: source,
     }, null, 2),
   );
-  return { artifactDir, agentRoot: source, agent, framework };
+  return { artifactDir, agentRoot, agent, framework };
 }
 
 /** Clone git repo at commit, discover agent, persist under artifactsDir. */
@@ -92,11 +91,7 @@ export async function buildFromGit(opts: BuildFromGitOptions): Promise<ArtifactB
     gitToken: opts.gitToken,
   });
 
-  const agentRoot = await findAgentRoot(cloneDir);
-  if (!agentRoot) throw new Error(`No ${AGENT_CONFIG} found in repository at ${opts.commitSha}`);
-
-  const agent = await loadAgentFromPath(agentRoot);
-  const framework = await detectFramework(agentRoot);
+  const { agentRoot, agent, framework } = await resolveAgent(cloneDir);
   await writeFile(
     join(artifactDir, "manifest.json"),
     JSON.stringify({ agentRoot, slug: agent.slug, framework, commitSha: opts.commitSha }, null, 2),

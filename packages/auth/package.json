@@ -6,7 +6,9 @@
     ".": "./src/index.ts"
   },
   "main": "./src/index.ts",
-  "dependencies": {},
+  "dependencies": {
+    "@node-saml/node-saml": "^5.1.0"
+  },
   "peerDependencies": {
     "@clerk/backend": "^2.0.0"
   },

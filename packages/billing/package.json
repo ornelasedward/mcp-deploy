@@ -1,0 +1,15 @@
+{
+  "name": "@platform/billing",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@platform/config": "workspace:*",
+    "@platform/db": "workspace:*",
+    "@platform/sdk": "workspace:*",
+    "stripe": "^18.5.0"
+  }
+}

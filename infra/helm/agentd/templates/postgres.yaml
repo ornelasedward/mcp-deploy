@@ -1,0 +1,57 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentd.fullname" . }}-postgres
+  labels:
+    {{- include "agentd.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 5432
+  selector:
+    app: {{ include "agentd.fullname" . }}-postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "agentd.fullname" . }}-postgres
+  labels:
+    {{- include "agentd.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "agentd.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "agentd.fullname" . }}-postgres
+  template:
+    metadata:
+      labels:
+        app: {{ include "agentd.fullname" . }}-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.auth.user }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.api.secrets.existingSecret | default (printf "%s-secrets" (include "agentd.fullname" .)) }}
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.auth.database }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}
+{{- end }}

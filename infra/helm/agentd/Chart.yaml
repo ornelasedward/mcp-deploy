@@ -1,0 +1,13 @@
+apiVersion: v2
+name: agentd
+description: Self-hosted agentd platform (API, web, Postgres) for enterprise BYOC
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - agentd
+  - agents
+  - mcp
+home: https://github.com/agentd/agentd
+maintainers:
+  - name: agentd

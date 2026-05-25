@@ -1,0 +1,77 @@
+# Default values for agentd BYOC (P14). Override per environment / VPC.
+
+global:
+  imagePullPolicy: IfNotPresent
+
+ingress:
+  enabled: true
+  className: nginx
+  host: agentd.example.com
+  apiSubdomain: api
+  tls:
+    enabled: true
+    secretName: agentd-tls
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  storage: 20Gi
+  auth:
+    user: agentd
+    password: "" # set via --set postgres.auth.password=...
+    database: agentd
+
+api:
+  replicaCount: 2
+  image:
+    repository: agentd/api
+    tag: latest
+  resources: {}
+  env:
+    NODE_ENV: production
+    DEPLOY_ENV: production
+    TRACE_STORE: postgres
+    GATEWAY: live
+    RUNTIME: e2b
+    DURABLE: inngest
+    AUTH_MODE: mixed
+  secrets:
+    # Injected from K8s secret `agentd-secrets` when secrets.create=false
+    existingSecret: agentd-secrets
+
+web:
+  replicaCount: 2
+  image:
+    repository: agentd/web
+    tag: latest
+  env:
+    NODE_ENV: production
+
+inngest:
+  # Use Inngest Cloud — set INNGEST_EVENT_KEY + INNGEST_SIGNING_KEY in agentd-secrets
+  external: true
+
+e2b:
+  enabled: false
+  # Set E2B_API_KEY in agentd-secrets when enabled
+
+saml:
+  enabled: false
+  entityId: https://api.agentd.example.com
+  acsUrl: https://api.agentd.example.com/v1/auth/saml/acs
+
+migrate:
+  enabled: true
+
+secrets:
+  create: true
+  # Non-secret defaults; override at install time
+  data:
+    API_KEY: ""
+    DATABASE_URL: ""
+    ANTHROPIC_API_KEY: ""
+    INNGEST_EVENT_KEY: ""
+    INNGEST_SIGNING_KEY: ""
+    E2B_API_KEY: ""
+    SECRETS_ENCRYPTION_KEY: ""
+    SAML_SESSION_SECRET: ""

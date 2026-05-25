@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { apiFetch, devOrgId } from "../../lib/api";
+import { apiFetch, devOrgId } from "../../lib/api-server";
 import { hasClerk } from "../../lib/clerk";
 import { formatPct, formatUsd, formatTime } from "../../lib/format";
 
@@ -64,6 +64,8 @@ export default async function DashboardPage() {
       <p style={{ color: "#666", fontSize: 14 }}>
         Org <code>{orgId}</code>
         {!hasClerk && " · dev mode (set Clerk keys for sign-in)"}
+        {" · "}
+        <Link href="/dashboard/billing">Billing</Link>
       </p>
 
       {usage && (

@@ -35,7 +35,7 @@ const Env = z.object({
 
   API_KEY: z.string().optional(),
   /** dev | clerk | keys | mixed — how the API authenticates callers. */
-  AUTH_MODE: z.enum(["dev", "clerk", "keys", "mixed"]).default("mixed"),
+  AUTH_MODE: z.enum(["dev", "clerk", "keys", "saml", "mixed"]).default("mixed"),
   CLERK_SECRET_KEY: z.string().optional(),
   DEFAULT_ORG_ID: z.string().default("org_dev"),
   AGENTS_DIR: z.string().optional(),
@@ -59,6 +59,30 @@ const Env = z.object({
   /** e.g. agentd.dev — enables wildcard agent subdomains in URL builder + web middleware. */
   PLATFORM_DOMAIN: z.string().optional(),
   DEPLOY_ENV: z.enum(["development", "staging", "production"]).default("development"),
+
+  /** Stripe Billing (P13) — Meters API for LLM pass-through; Checkout for platform fee. */
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  /** Licensed monthly platform fee (Checkout line item). */
+  STRIPE_PRICE_PLATFORM_MONTHLY: z.string().optional(),
+  /** Metered price backed by a Billing Meter (LLM cost pass-through). */
+  STRIPE_PRICE_LLM_METERED: z.string().optional(),
+  /** Event name on the meter (billing.meterEvents.create). */
+  STRIPE_METER_LLM_EVENT: z.string().optional(),
+  BILLING_ENABLED: z.coerce.boolean().optional(),
+
+  /** Enterprise SAML SSO (P14). */
+  SAML_ENABLED: z.coerce.boolean().optional(),
+  SAML_SP_ENTITY_ID: z.string().optional(),
+  SAML_SP_ACS_URL: z.string().optional(),
+  SAML_IDP_SSO_URL: z.string().optional(),
+  SAML_IDP_CERT: z.string().optional(),
+  SAML_SP_PRIVATE_KEY: z.string().optional(),
+  SAML_SP_CERT: z.string().optional(),
+  SAML_SESSION_SECRET: z.string().optional(),
+  /** SAML attribute for org mapping (default: orgId). */
+  SAML_ORG_ATTRIBUTE: z.string().default("orgId"),
+  SAML_DEFAULT_ORG_ID: z.string().optional(),
 });
 
 export type Config = z.infer<typeof Env>;
@@ -81,5 +105,13 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       throw new Error("API_KEY or CLERK_SECRET_KEY is required in production");
     }
   }
-  return config;
+  if (parsed.data.BILLING_ENABLED === undefined) {
+    (parsed.data as { BILLING_ENABLED: boolean }).BILLING_ENABLED = Boolean(parsed.data.STRIPE_SECRET_KEY);
+  }
+  if (parsed.data.SAML_ENABLED === undefined) {
+    (parsed.data as { SAML_ENABLED: boolean }).SAML_ENABLED = Boolean(
+      parsed.data.SAML_IDP_SSO_URL && parsed.data.SAML_IDP_CERT && parsed.data.SAML_SESSION_SECRET,
+    );
+  }
+  return parsed.data;
 }

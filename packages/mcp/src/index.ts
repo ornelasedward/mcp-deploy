@@ -52,3 +52,16 @@ export async function handleMcpHttp(
   await server.connect(transport);
   return transport.handleRequest(request);
 }
+
+export {
+  buildMcpServerCard,
+  type McpServerCard,
+  type McpToolCard,
+} from "./card";
+export {
+  buildMcpServerConfig,
+  buildClaudeDesktopDeepLink,
+  buildClaudeWebInstallerUrl,
+  type McpServerConfigFile,
+} from "./claude-desktop";
+export { zodInputHint, exampleInputFromSchema } from "./schema-hint";

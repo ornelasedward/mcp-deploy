@@ -15,10 +15,23 @@ import {
   findPublicAgentInRegistry,
 } from "@platform/core";
 import { enqueueBackground } from "@platform/core";
-import { runEvals, checkEvalGate } from "@platform/evals";
-import { ExportingTraceStore, InMemoryTraceStore } from "@platform/trace";
+import { runEvals } from "@platform/evals";
+import { checkEvalGate, ExportingTraceStore, InMemoryTraceStore } from "@platform/core";
 import { handleMcpHttp } from "@platform/mcp";
-import { verifyGitHubSignature, buildFromLocalPath, buildAgentUrls } from "@platform/build";
+import {
+  verifyGitHubSignature,
+  buildFromLocalPath,
+  buildAgentUrls,
+  detectFrameworkInfo,
+  planFrameworkImport,
+  writeAdaptedAgent,
+} from "@platform/build";
+import { buildMcpServerCard } from "@platform/mcp";
+import { listDirectoryAgents } from "@platform/core";
+import { BillingLimitError, FREE_TIER } from "@platform/billing";
+import { signSamlSession, verifySamlSession } from "@platform/auth";
+import { auditLineToJsonl, type AuditLine } from "@platform/db";
+import { readFile } from "node:fs/promises";
 import { parseAgentSubdomain } from "@platform/config";
 import supportTriage from "../examples/support-triage/agent.config";
 import cases from "../examples/support-triage/evals/cases.json" with { type: "json" };
@@ -188,7 +201,54 @@ async function main() {
   });
   assert((await wrapped.list("exp-1")).length === 1, "exporting trace store wraps inner store");
 
-  // 7. P1: artifact build + GitHub signature verification
+  // 7. P11: framework detect + import adapter generates agent.config.ts
+  const lgRoot = join(process.cwd(), "examples/adapters/langgraph-minimal");
+  const lgInfo = await detectFrameworkInfo(lgRoot);
+  assert(lgInfo.framework === "langgraph", "detects LangGraph from package.json");
+  const lgPlan = await planFrameworkImport(lgRoot);
+  assert(lgPlan?.entryPath != null, "LangGraph adapter finds entry path");
+  const lgAgentd = await writeAdaptedAgent(lgRoot, lgPlan!);
+  const lgConfig = await readFile(join(lgAgentd, "agent.config.ts"), "utf8");
+  assert(lgConfig.includes("defineAgent"), "adapter writes defineAgent manifest");
+  assert(lgConfig.includes("langgraph"), "generated config notes framework");
+
+  const tmpAdapt = await mkdtemp(join(tmpdir(), "agentd-vercel-ai-"));
+  try {
+    await import("node:fs/promises").then((fs) =>
+      fs.writeFile(
+        join(tmpAdapt, "package.json"),
+        JSON.stringify({ dependencies: { ai: "4.0.0" } }),
+      ),
+    );
+    await import("node:fs/promises").then((fs) =>
+      fs.mkdir(join(tmpAdapt, "src"), { recursive: true }),
+    );
+    await import("node:fs/promises").then((fs) =>
+      fs.writeFile(
+        join(tmpAdapt, "src", "agent.ts"),
+        `import { generateText } from "ai";\nexport async function runAgent() { return { reply: "ok" }; }\n`,
+      ),
+    );
+    const aiInfo = await detectFrameworkInfo(tmpAdapt);
+    assert(aiInfo.framework === "vercel-ai", "detects Vercel AI SDK");
+  } finally {
+    await rm(tmpAdapt, { recursive: true, force: true });
+  }
+
+  // 8. P12: MCP server card + Claude deep link + public directory
+  const mcpCard = buildMcpServerCard(
+    supportTriage,
+    platform.config.PLATFORM_BASE_URL,
+    platform.config.WEB_BASE_URL,
+  );
+  assert(mcpCard.tools.length === 1, "MCP card exposes one tool");
+  assert(mcpCard.tools[0]!.examplePrompt.includes("support"), "MCP card has example prompt");
+  assert(mcpCard.claudeDeepLink.startsWith("claude://"), "Claude Desktop deep link");
+  assert(mcpCard.configJson.includes("mcpServers"), "MCP config JSON for Claude");
+  const directory = listDirectoryAgents(platform.registry);
+  assert(directory.some((d) => d.agent.slug === supportTriage.slug), "public agent in directory");
+
+  // 9. P1: artifact build + GitHub signature verification
   const { createHmac } = await import("node:crypto");
   const payload = "smoke-webhook-body";
   const sig =
@@ -208,7 +268,7 @@ async function main() {
     await rm(tmp, { recursive: true, force: true });
   }
 
-  // 8. P7: mock E2B — handler in subprocess, ctx.llm/trace bridged to platform
+  // 10. P7: mock E2B — handler in subprocess, ctx.llm/trace bridged to platform
   const e2bPlatform = await buildPlatform({
     ...process.env,
     GATEWAY: "local",
@@ -264,6 +324,50 @@ async function main() {
   }
   assert(polled?.status === "succeeded", "async run is pollable until succeeded");
   assert(typeof platform.trace.getRun === "function", "trace store exposes getRun");
+
+  // 11. P13: free tier monthly run cap (no Stripe keys required)
+  const freeOrg = "org_smoke_free_tier";
+  for (let i = 0; i < FREE_TIER.runsPerMonth; i++) {
+    await platform.billing.recordRunStarted(freeOrg);
+  }
+  let blocked = false;
+  try {
+    await platform.billing.assertCanRun(freeOrg);
+  } catch (e) {
+    blocked = e instanceof BillingLimitError && e.code === "runs_exceeded";
+  }
+  assert(blocked, "free tier blocks runs after monthly limit");
+  const billingOverview = await platform.billing.getOverview(freeOrg);
+  assert(billingOverview.plan === "free", "new org defaults to free plan");
+  assert(
+    billingOverview.runsThisPeriod >= FREE_TIER.runsPerMonth,
+    "billing tracks runs this period",
+  );
+
+  // 12. P14: SAML session + audit JSONL format
+  const samlToken = signSamlSession(
+    { sub: "smoke-user", orgId: "org_saml_smoke" },
+    "smoke-saml-secret",
+    3600,
+  );
+  const samlPayload = verifySamlSession(samlToken, "smoke-saml-secret");
+  assert(samlPayload?.orgId === "org_saml_smoke", "SAML session token round-trip");
+  const auditSample: AuditLine = {
+    kind: "run",
+    runId: "r1",
+    orgId: "org_saml_smoke",
+    agentSlug: "support-triage",
+    status: "succeeded",
+    source: "http",
+    costUsd: 0,
+    tokens: 0,
+    durationMs: 10,
+    createdAt: new Date().toISOString(),
+    input: {},
+    output: {},
+  };
+  const line = auditLineToJsonl(auditSample);
+  assert(line.includes('"kind":"run"'), "audit export JSONL line format");
 
   console.log("\nSMOKE GREEN — spine works end to end.");
 }

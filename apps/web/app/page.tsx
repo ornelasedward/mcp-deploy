@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { apiFetch } from "../lib/api";
+import { apiFetch } from "../lib/api-server";
 import { hasClerk } from "../lib/clerk";
 
 async function fetchAgents() {
@@ -22,6 +22,8 @@ export default async function Home() {
       <p>One push → endpoint + MCP + CLI + playground. The deployed agent is the shareable artifact.</p>
       <p style={{ marginTop: 12 }}>
         <Link href="/dashboard">Dashboard</Link>
+        {" · "}
+        <Link href="/explore">Explore public agents</Link>
         {hasClerk && (
           <>
             {" · "}
