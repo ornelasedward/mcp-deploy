@@ -1,0 +1,39 @@
+{
+  "name": "agentd",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "smoke": "tsx scripts/smoke.ts",
+    "api": "tsx apps/api/src/index.ts",
+    "web": "pnpm --filter @platform/web dev",
+    "deploy:local": "tsx packages/cli/src/index.ts deploy examples/support-triage",
+    "migrate": "tsx scripts/migrate.ts",
+    "prod": "docker compose up --build",
+    "prod:staging": "docker compose -f docker-compose.yml -f docker-compose.staging.yml up --build",
+    "run-agent": "tsx packages/runner/src/index.ts"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "postgres": "catalog:",
+    "tsx": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@example/support-triage": "workspace:*",
+    "@platform/core": "workspace:*",
+    "@platform/evals": "workspace:*",
+    "@platform/mcp": "workspace:*",
+    "@platform/build": "workspace:*",
+    "@platform/config": "workspace:*",
+    "zod": "catalog:"
+  }
+}

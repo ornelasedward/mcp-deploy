@@ -1,0 +1,19 @@
+# Staging overlay — mirrors prod with staging hostnames.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.staging.yml up --build
+services:
+  api:
+    environment:
+      DEPLOY_ENV: staging
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-agentd.dev}
+      PLATFORM_BASE_URL: https://api.staging.${PLATFORM_DOMAIN:-agentd.dev}
+      WEB_BASE_URL: https://app.staging.${PLATFORM_DOMAIN:-agentd.dev}
+
+  web:
+    build:
+      args:
+        NEXT_PUBLIC_API_BASE: https://api.staging.${PLATFORM_DOMAIN:-agentd.dev}
+        NEXT_PUBLIC_PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-agentd.dev}
+    environment:
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-agentd.dev}
+      NEXT_PUBLIC_PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-agentd.dev}
+      NEXT_PUBLIC_API_BASE: https://api.staging.${PLATFORM_DOMAIN:-agentd.dev}

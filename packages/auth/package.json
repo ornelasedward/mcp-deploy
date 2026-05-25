@@ -1,0 +1,16 @@
+{
+  "name": "@platform/auth",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "dependencies": {},
+  "peerDependencies": {
+    "@clerk/backend": "^2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@clerk/backend": { "optional": true }
+  }
+}

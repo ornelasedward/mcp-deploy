@@ -1,0 +1,19 @@
+{
+  "name": "@platform/core",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@platform/config": "workspace:*",
+    "@platform/db": "workspace:*",
+    "@platform/durable": "workspace:*",
+    "@platform/gateway": "workspace:*",
+    "@platform/runtime": "workspace:*",
+    "@platform/sdk": "workspace:*",
+    "@platform/trace": "workspace:*",
+    "zod": "catalog:"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@platform/gateway",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@platform/sdk": "workspace:*",
+    "@platform/trace": "workspace:*"
+  },
+  "peerDependencies": {
+    "ai": "catalog:",
+    "@ai-sdk/anthropic": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "ai": { "optional": true },
+    "@ai-sdk/anthropic": { "optional": true }
+  }
+}

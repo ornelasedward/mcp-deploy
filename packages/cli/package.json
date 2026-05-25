@@ -1,0 +1,9 @@
+{
+  "name": "@platform/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "platform": "./src/index.ts" },
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "dependencies": { "@platform/detect": "workspace:*" }
+}

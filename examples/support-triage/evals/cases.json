@@ -1,0 +1,4 @@
+[
+  { "name": "billing question", "input": { "message": "I was charged twice for my invoice" }, "expect": { "contains": "billing" } },
+  { "name": "bug report", "input": { "message": "the app crashed on startup" }, "expect": { "contains": "bug" } }
+]

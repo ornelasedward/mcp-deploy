@@ -1,0 +1,16 @@
+{
+  "name": "@platform/mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@platform/core": "workspace:*",
+    "@platform/gateway": "workspace:*",
+    "@platform/sdk": "workspace:*",
+    "zod": "catalog:"
+  }
+}

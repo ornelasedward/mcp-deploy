@@ -1,0 +1,45 @@
+# Fly.io — API + Inngest worker (same process serves /api/inngest)
+# Deploy: fly deploy --config infra/fly/api/fly.toml
+app = "agentd-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.api"
+  build-context = "../../.."
+
+[env]
+  NODE_ENV = "production"
+  DEPLOY_ENV = "production"
+  PORT = "8787"
+  TRACE_STORE = "postgres"
+  DURABLE = "inngest"
+  RUNTIME = "local"
+  GATEWAY = "live"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+# Secrets (set via fly secrets set — never commit):
+#   DATABASE_URL       — Neon/Supabase Postgres (sslmode=require)
+#   API_KEY            — platform bootstrap key
+#   INNGEST_EVENT_KEY
+#   INNGEST_SIGNING_KEY
+#   ANTHROPIC_API_KEY
+#   GITHUB_WEBHOOK_SECRET
+#   GITHUB_TOKEN
+#   CLERK_SECRET_KEY
+#   PLATFORM_DOMAIN=agentd.dev
+#   PLATFORM_BASE_URL=https://api.agentd.dev
+#   WEB_BASE_URL=https://app.agentd.dev

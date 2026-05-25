@@ -1,0 +1,28 @@
+{
+  "name": "@platform/api",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "catalog:",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@platform/auth": "workspace:*",
+    "@platform/config": "workspace:*",
+    "@platform/core": "workspace:*",
+    "@platform/runtime": "workspace:*",
+    "@platform/build": "workspace:*",
+    "@platform/db": "workspace:*",
+    "@platform/durable": "workspace:*",
+    "@platform/evals": "workspace:*",
+    "@platform/gateway": "workspace:*",
+    "@platform/mcp": "workspace:*",
+    "@platform/sdk": "workspace:*",
+    "hono": "catalog:",
+    "inngest": "catalog:"
+  },
+  "optionalDependencies": {
+    "@clerk/backend": "^2.0.0"
+  }
+}

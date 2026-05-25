@@ -1,0 +1,13 @@
+{
+  "name": "@platform/build",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@platform/detect": "workspace:*",
+    "@platform/sdk": "workspace:*"
+  }
+}

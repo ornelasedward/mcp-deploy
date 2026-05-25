@@ -1,0 +1,32 @@
+# Fly.io — Next.js dashboard + wildcard agent playgrounds
+# Deploy: fly deploy --config infra/fly/web/fly.toml
+app = "agentd-web"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.web"
+  build-context = "../../.."
+  [build.args]
+    NEXT_PUBLIC_API_BASE = "https://api.agentd.dev"
+    NEXT_PUBLIC_PLATFORM_DOMAIN = "agentd.dev"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  PLATFORM_DOMAIN = "agentd.dev"
+  API_BASE = "https://api.agentd.dev"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+# Custom domains (Fly → Certificates):
+#   app.agentd.dev
+#   *.agentd.dev   (wildcard — agent playgrounds)
+#
+# Secrets:
+#   NEXT_PUBLIC_API_KEY (optional, for server-side fetches)
+#   CLERK_SECRET_KEY / NEXT_PUBLIC_CLERK_* when using Clerk

@@ -1,0 +1,88 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agentd
+      POSTGRES_PASSWORD: agentd
+      POSTGRES_DB: agentd
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./packages/db/migrations/0000_init.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - ./packages/db/migrations/0001_handler_path.sql:/docker-entrypoint-initdb.d/02_handler_path.sql
+      - ./packages/db/migrations/0002_auth.sql:/docker-entrypoint-initdb.d/03_auth.sql
+      - ./packages/db/migrations/0003_runs_agent_slug.sql:/docker-entrypoint-initdb.d/04_runs_agent_slug.sql
+      - ./packages/db/migrations/0004_public_playground.sql:/docker-entrypoint-initdb.d/05_public_playground.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentd"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: ["pnpm", "exec", "tsx", "scripts/migrate.ts"]
+    environment:
+      DATABASE_URL: postgres://agentd:agentd@postgres:5432/agentd
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["tools"]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8787:8787"
+    environment:
+      NODE_ENV: production
+      DEPLOY_ENV: production
+      DATABASE_URL: postgres://agentd:agentd@postgres:5432/agentd
+      TRACE_STORE: postgres
+      GATEWAY: ${GATEWAY:-local}
+      RUNTIME: local
+      DURABLE: ${DURABLE:-local}
+      API_KEY: ${API_KEY:-dev-production-key}
+      PLATFORM_BASE_URL: ${PLATFORM_BASE_URL:-http://localhost:8787}
+      WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:3000}
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-}
+      AGENTS_DIR: /app/examples
+      ARTIFACTS_DIR: /app/.artifacts
+      DEFAULT_ORG_ID: org_prod
+      PORT: 8787
+      INNGEST_EVENT_KEY: ${INNGEST_EVENT_KEY:-}
+      INNGEST_SIGNING_KEY: ${INNGEST_SIGNING_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./examples:/app/examples:ro
+      - artifacts:/app/.artifacts
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8787}
+        NEXT_PUBLIC_PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-}
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      API_BASE: http://api:8787
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8787}
+      NEXT_PUBLIC_API_KEY: ${API_KEY:-dev-production-key}
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-}
+      NEXT_PUBLIC_PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-}
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  artifacts:
