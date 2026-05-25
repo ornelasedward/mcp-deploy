@@ -147,7 +147,9 @@ export function dashboardRoutes(opts: DashboardRoutesOpts) {
     if (!run || run.agentSlug !== slug) return c.json({ error: "not found" }, 404);
 
     const events = await trace.list(runId);
-    return c.json({ run, events });
+    const suspended = events.find((e) => e.type === "run.suspended");
+    const pendingEvent = (suspended?.payload as { event?: string } | undefined)?.event;
+    return c.json({ run: { ...run, pendingEvent }, events });
   });
 
   return app;

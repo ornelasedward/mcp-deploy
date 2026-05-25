@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
+import { resolve } from "node:path";
 import { eq, and } from "drizzle-orm";
 import type { ResolvedAgent } from "@platform/sdk";
 import {
@@ -198,6 +199,7 @@ export class DeployService {
   async saveEvalResults(
     deploymentId: string,
     results: { name: string; passed: boolean; score: number; output?: unknown }[],
+    baseline?: Map<string, number>,
   ): Promise<void> {
     for (const r of results) {
       await this.db.insert(evalResults).values({
@@ -206,8 +208,16 @@ export class DeployService {
         score: r.score,
         passed: r.passed,
         output: r.output ?? null,
+        baselineScore: baseline?.get(r.name) ?? null,
       });
     }
+  }
+
+  async markDeploymentFailed(deploymentId: string): Promise<void> {
+    await this.db
+      .update(deployments)
+      .set({ status: "failed" })
+      .where(eq(deployments.id, deploymentId));
   }
 
   async findOrgByRepo(repo: string): Promise<string | null> {

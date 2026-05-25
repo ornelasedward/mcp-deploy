@@ -10,5 +10,17 @@ export type AgentRunEvent = {
     orgId: string;
     runId: string;
     source: string;
+    projectId?: string;
+    snapshotRef?: string;
+  };
+};
+
+export type AgentResumeEvent = {
+  name: "agent/resume";
+  data: {
+    runId: string;
+    orgId: string;
+    eventName: string;
+    payload?: unknown;
   };
 };

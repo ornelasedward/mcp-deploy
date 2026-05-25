@@ -1,6 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
-import type { CompleteRunPayload, RunEvent, RunRecord, TraceStore } from "@platform/trace";
+import type {
+  CompleteRunPayload,
+  RunEvent,
+  RunRecord,
+  RunSnapshot,
+  RunStatus,
+  TraceStore,
+} from "@platform/trace";
 import * as schema from "./schema";
 import { orgs, runEvents, runs } from "./schema";
 
@@ -27,7 +35,7 @@ export class PostgresTraceStore implements TraceStore {
         agentId: record.agentId ?? null,
         agentSlug: record.agentSlug ?? null,
         input: record.input ?? null,
-        status: "running",
+        status: record.status ?? "running",
         source: record.source,
         idempotencyKey: record.runId,
       })
@@ -64,12 +72,53 @@ export class PostgresTraceStore implements TraceStore {
     }));
   }
 
+  async getRun(runId: string): Promise<RunSnapshot | null> {
+    const rows = await this.db.select().from(runs).where(eq(runs.id, runId)).limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      runId: row.id,
+      orgId: row.orgId,
+      source: row.source,
+      status: row.status as RunStatus,
+      agentSlug: row.agentSlug ?? undefined,
+      input: row.input ?? undefined,
+      output: row.output ?? undefined,
+      costUsd: row.costUsd,
+      durationMs: row.durationMs ?? undefined,
+      createdAt: row.createdAt.getTime(),
+    };
+  }
+
+  async updateRunStatus(
+    runId: string,
+    status: RunStatus,
+    extra?: { pendingEvent?: string; error?: string },
+  ): Promise<void> {
+    await this.db
+      .update(runs)
+      .set({
+        status,
+        ...(extra?.error != null ? { output: { error: extra.error } } : {}),
+      })
+      .where(eq(runs.id, runId));
+    if (extra?.pendingEvent) {
+      await this.append({
+        id: randomUUID(),
+        runId,
+        type: "run.suspended",
+        payload: { event: extra.pendingEvent },
+        ts: Date.now(),
+      });
+    }
+  }
+
   async completeRun(payload: CompleteRunPayload): Promise<void> {
     await this.db
       .update(runs)
       .set({
         status: payload.status,
-        output: payload.output ?? null,
+        output: payload.output ?? (payload.error ? { error: payload.error } : null),
         costUsd: payload.costUsd,
         durationMs: payload.durationMs,
       })

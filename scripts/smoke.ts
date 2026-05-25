@@ -6,6 +6,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import {
   buildPlatform,
   connectSnippets,
@@ -13,7 +14,9 @@ import {
   streamAgentRun,
   findPublicAgentInRegistry,
 } from "@platform/core";
-import { runEvals } from "@platform/evals";
+import { enqueueBackground } from "@platform/core";
+import { runEvals, checkEvalGate } from "@platform/evals";
+import { ExportingTraceStore, InMemoryTraceStore } from "@platform/trace";
 import { handleMcpHttp } from "@platform/mcp";
 import { verifyGitHubSignature, buildFromLocalPath, buildAgentUrls } from "@platform/build";
 import { parseAgentSubdomain } from "@platform/config";
@@ -161,6 +164,30 @@ async function main() {
   const results = await runEvals(supportTriage, cases as any, { dispatch: platform.dispatch, orgId, budget });
   assert(results.every((r) => r.passed), `evals pass (${results.length} cases)`);
 
+  // 6b. P10: eval regression gate
+  const baseline = new Map(results.map((r) => [r.name, 1]));
+  const regressed = checkEvalGate(
+    [{ name: "billing question", passed: true, score: 0.5 }],
+    baseline,
+    0.05,
+  );
+  assert(!regressed.passed, "eval gate blocks score regression vs baseline");
+  const okGate = checkEvalGate(results, baseline, 0.05);
+  assert(okGate.passed, "eval gate passes when scores match baseline");
+
+  // 6c. P10: trace export wrapper delegates to inner store
+  const inner = new InMemoryTraceStore();
+  const wrapped = new ExportingTraceStore(inner, []);
+  await wrapped.beginRun?.({ runId: "exp-1", orgId, source: "http" });
+  await wrapped.append({
+    id: "e1",
+    runId: "exp-1",
+    type: "run.start",
+    payload: { ok: true },
+    ts: Date.now(),
+  });
+  assert((await wrapped.list("exp-1")).length === 1, "exporting trace store wraps inner store");
+
   // 7. P1: artifact build + GitHub signature verification
   const { createHmac } = await import("node:crypto");
   const payload = "smoke-webhook-body";
@@ -208,6 +235,35 @@ async function main() {
     "mock E2B records sandbox provider",
   );
   assert(e2bEvents.some((e) => e.type === "llm.token"), "mock E2B bridges llm to platform");
+
+  // 9. P9: async run queue + poll (in-process background when no Inngest keys)
+  const asyncRunId = randomUUID();
+  await platform.trace.beginRun?.({
+    runId: asyncRunId,
+    orgId,
+    source: "http",
+    agentSlug: supportTriage.slug,
+    input: { message: "async poll test" },
+    status: "queued",
+  });
+  enqueueBackground(async () => {
+    await platform.trace.updateRunStatus?.(asyncRunId, "running");
+    await platform.dispatch({
+      agent: supportTriage,
+      input: { message: "async poll test" },
+      source: "http",
+      orgId,
+      idempotencyKey: asyncRunId,
+      budget,
+    });
+  });
+  let polled = await platform.trace.getRun?.(asyncRunId);
+  for (let i = 0; i < 80 && polled?.status !== "succeeded"; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+    polled = await platform.trace.getRun?.(asyncRunId);
+  }
+  assert(polled?.status === "succeeded", "async run is pollable until succeeded");
+  assert(typeof platform.trace.getRun === "function", "trace store exposes getRun");
 
   console.log("\nSMOKE GREEN — spine works end to end.");
 }

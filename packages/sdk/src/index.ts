@@ -59,6 +59,11 @@ export interface SecretReader {
   get(name: string): Promise<string | undefined>;
 }
 
+/** Human-in-the-loop waits (Inngest async runs only). */
+export interface RunStep {
+  waitForEvent<T = unknown>(name: string, opts?: { timeoutMs?: number }): Promise<T>;
+}
+
 /** Everything the agent handler receives. Built per-run by the dispatcher. */
 export interface Ctx {
   runId: string;
@@ -69,6 +74,8 @@ export interface Ctx {
   signal: AbortSignal;
   /** Encrypted project secrets (optional). */
   secrets?: SecretReader;
+  /** Suspend until `POST .../runs/:id/resume` (async/Inngest runs). */
+  step?: RunStep;
 }
 
 export interface AgentManifest<I = unknown, O = unknown> {

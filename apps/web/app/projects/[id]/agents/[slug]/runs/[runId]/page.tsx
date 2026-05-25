@@ -2,6 +2,7 @@ import Link from "next/link";
 import { apiFetch, devOrgId } from "../../../../../../../lib/api";
 import { formatDuration, formatTime, formatUsd } from "../../../../../../../lib/format";
 import { TraceTimeline } from "../../../../../../../components/trace-timeline";
+import { HitlApprove } from "../../../../../../../components/hitl-approve";
 
 export default async function RunTracePage({
   params,
@@ -33,9 +34,15 @@ export default async function RunTracePage({
       createdAt: string;
       input: unknown;
       output: unknown;
+      pendingEvent?: string;
     };
     events: { type: string; payload: Record<string, unknown>; durationMs?: number }[];
   };
+
+  const suspendedEvent =
+    run.pendingEvent ??
+    (events.find((e) => e.type === "run.suspended")?.payload as { event?: string } | undefined)
+      ?.event;
 
   return (
     <main>
@@ -66,6 +73,10 @@ export default async function RunTracePage({
         <span>Duration: {formatDuration(run.durationMs)}</span>
         <span>{formatTime(run.createdAt)}</span>
       </div>
+
+      {run.status === "suspended" && (
+        <HitlApprove orgId={orgId} slug={slug} runId={runId} eventName={suspendedEvent} />
+      )}
 
       {(run.input != null || run.output != null) && (
         <section style={{ marginTop: 24, display: "grid", gap: 16 }}>

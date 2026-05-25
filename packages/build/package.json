@@ -8,6 +8,9 @@
   "main": "./src/index.ts",
   "dependencies": {
     "@platform/detect": "workspace:*",
-    "@platform/sdk": "workspace:*"
+    "@platform/evals": "workspace:*",
+    "@platform/gateway": "workspace:*",
+    "@platform/sdk": "workspace:*",
+    "@platform/core": "workspace:*"
   }
 }

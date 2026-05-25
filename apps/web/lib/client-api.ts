@@ -20,3 +20,10 @@ export function clientApiHeaders(extra?: Record<string, string>): Record<string,
 export function clientApiUrl(path: string) {
   return `${API_BASE.replace(/\/$/, "")}${path}`;
 }
+
+export function clientApiFetch(path: string, init?: RequestInit) {
+  return fetch(clientApiUrl(path), {
+    ...init,
+    headers: clientApiHeaders(init?.headers as Record<string, string> | undefined),
+  });
+}

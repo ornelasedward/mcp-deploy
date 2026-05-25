@@ -9,3 +9,5 @@ export {
 } from "./artifact";
 export { loadAgentFromPath } from "./load-agent";
 export { buildAgentUrls, type AgentUrls } from "./urls";
+export { formatEvalPrComment, postGithubPrComment } from "./github-comment";
+export { runDeployEvals, type DeployEvalOutcome, type DeployEvalPersistence } from "./deploy-eval";

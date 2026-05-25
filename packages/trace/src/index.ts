@@ -19,6 +19,24 @@ export interface RunRecord {
   agentSlug?: string;
   agentId?: string;
   input?: unknown;
+  status?: RunStatus;
+}
+
+export type RunStatus = "queued" | "running" | "suspended" | "succeeded" | "failed";
+
+export interface RunSnapshot {
+  runId: string;
+  orgId: string;
+  source: string;
+  status: RunStatus;
+  agentSlug?: string;
+  input?: unknown;
+  output?: unknown;
+  error?: string;
+  costUsd: number;
+  durationMs?: number;
+  pendingEvent?: string;
+  createdAt: number;
 }
 
 /** Final run row update after dispatch completes. */
@@ -41,6 +59,12 @@ export interface TraceStore {
   beginRun?(record: RunRecord): Promise<void>;
   /** Finalize run row after dispatch completes (implemented by PostgresTraceStore). */
   completeRun?(payload: CompleteRunPayload): Promise<void>;
+  getRun?(runId: string): Promise<RunSnapshot | null>;
+  updateRunStatus?(
+    runId: string,
+    status: RunStatus,
+    extra?: { pendingEvent?: string; error?: string },
+  ): Promise<void>;
 }
 
 const SECRET_KEYS = /(authorization|api[_-]?key|password|secret|token)/i;
@@ -54,6 +78,48 @@ function redact(payload: Record<string, unknown>): Record<string, unknown> {
 
 export class InMemoryTraceStore implements TraceStore {
   private events: RunEvent[] = [];
+  private runs = new Map<string, RunSnapshot>();
+
+  async beginRun(record: RunRecord): Promise<void> {
+    this.runs.set(record.runId, {
+      runId: record.runId,
+      orgId: record.orgId,
+      source: record.source,
+      status: record.status ?? "running",
+      agentSlug: record.agentSlug,
+      input: record.input,
+      costUsd: 0,
+      createdAt: Date.now(),
+    });
+  }
+
+  async getRun(runId: string): Promise<RunSnapshot | null> {
+    return this.runs.get(runId) ?? null;
+  }
+
+  async updateRunStatus(
+    runId: string,
+    status: RunStatus,
+    extra?: { pendingEvent?: string; error?: string },
+  ): Promise<void> {
+    const row = this.runs.get(runId);
+    if (!row) return;
+    row.status = status;
+    if (extra?.pendingEvent != null) row.pendingEvent = extra.pendingEvent;
+    if (extra?.error != null) row.error = extra.error;
+  }
+
+  async completeRun(payload: CompleteRunPayload): Promise<void> {
+    const row = this.runs.get(payload.runId);
+    if (!row) return;
+    row.status = payload.status;
+    row.output = payload.output;
+    row.error = payload.error;
+    row.costUsd = payload.costUsd;
+    row.durationMs = payload.durationMs;
+    row.pendingEvent = undefined;
+  }
+
   async append(event: RunEvent): Promise<void> {
     this.events.push(event);
   }
@@ -63,6 +129,10 @@ export class InMemoryTraceStore implements TraceStore {
 }
 
 /** Builds a per-run emitter that writes redacted spans into the store. */
+export * from "./export";
+export { LangfuseExporter, type LangfuseExporterOptions } from "./langfuse";
+export { OtelExporter, type OtelExporterOptions } from "./otel";
+
 export function makeEmitter(store: TraceStore, runId: string, parentId?: string): TraceEmitter {
   const write = (type: string, payload: Record<string, unknown>, durationMs?: number) =>
     store.append({

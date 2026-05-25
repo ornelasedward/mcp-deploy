@@ -11,6 +11,7 @@ export { loadAgentFromPath } from "./load-agent";
 export { recordUsage } from "./usage-store";
 export { BudgetStore } from "./budget-store";
 export { SecretsStore } from "./secrets-store";
+export { getProductionEvalBaseline } from "./eval-store";
 
 export type Database = ReturnType<typeof drizzle<typeof schema>>;
 

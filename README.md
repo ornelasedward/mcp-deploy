@@ -140,6 +140,10 @@ Full phased plan: **[PLAN.md](./PLAN.md)** — P0–P14 from shippable SaaS (git
 
 **Budgets + secrets (P8):** Per-org monthly cap enforced in the gateway (`BudgetStore` + `usage_events`). Project secrets via `PUT /v1/orgs/:orgId/projects/:projectId/secrets/:name` (AES-GCM at rest with `SECRETS_ENCRYPTION_KEY`). Injected as `ctx.secrets` and sandbox env — never written to `run_events`.
 
-**Start here:** P9 (durable + HITL — Inngest primary, run polling, approvals).
+**Durable + HITL (P9):** Production uses `DURABLE=inngest` — HTTP runs return `202` + `runId` (poll `GET /v1/agents/:slug/runs/:id`). Agents call `ctx.step.waitForEvent("approval")`; resume with `POST .../runs/:id/resume`. Dashboard shows suspended runs with an Approve button. Dev: `?async=1` or in-process background queue without Inngest keys.
+
+**Observability + eval gates (P10):** `TRACE_EXPORT=langfuse|otel` fans out `run_events`. Eval cases support `llm-judge` grader. Deploy/webhook runs evals, blocks on regression (`EVAL_REGRESSION_DELTA`), and posts a PR comment with score diff vs production baseline.
+
+**Start here:** P11 (framework adapters — OpenAI Agents SDK, Mastra, LangGraph import paths).
 
 Interfaces are fixed; smoke test is the regression net.

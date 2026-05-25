@@ -9,18 +9,25 @@ import {
   SecretsStore,
   type Database,
 } from "@platform/db";
-import { InMemoryTraceStore, type TraceStore } from "@platform/trace";
+import {
+  ExportingTraceStore,
+  InMemoryTraceStore,
+  LangfuseExporter,
+  OtelExporter,
+  type TraceStore,
+} from "@platform/trace";
 import { createGateway, type Budget } from "@platform/gateway";
 import {
   createRuntimeBundle,
   parseEgressAllowlist,
   type BridgeRegistry,
 } from "@platform/runtime";
-import { createDurableEngine } from "@platform/durable";
+import { createDurableEngine, enqueueBackground } from "@platform/durable";
 import { createDispatcher, type Dispatch, type RunResult } from "./dispatcher";
 import type { RunSource } from "@platform/sdk";
 
 export * from "./dispatcher";
+export type { DispatchOptions } from "./dispatcher";
 export * from "./surfaces";
 export * from "./hydrate";
 export { AgentRegistry } from "./registry";
@@ -28,11 +35,15 @@ export { IpRateLimiter, clientIp } from "./rate-limit";
 export { streamAgentRun } from "./stream-run";
 export { sseResponse } from "./sse";
 export { findPublicAgentInRegistry, resolvePublicAgent } from "./public-agent";
+export { enqueueBackground };
+export { checkEvalGate } from "@platform/evals";
+export { ExportingTraceStore, InMemoryTraceStore } from "@platform/trace";
 
 export interface Platform {
   config: Config;
   registry: AgentRegistry;
   dispatch: Dispatch;
+  gateway: import("@platform/gateway").Gateway;
   trace: TraceStore;
   db?: Database;
   deploy?: DeployService;
@@ -44,11 +55,40 @@ export interface Platform {
 }
 
 function createTraceStore(config: Config, db?: Database): TraceStore {
-  if (config.TRACE_STORE === "postgres") {
-    if (!db) throw new Error("DATABASE_URL required for TRACE_STORE=postgres");
-    return new PostgresTraceStore(db);
+  const inner =
+    config.TRACE_STORE === "postgres"
+      ? (() => {
+          if (!db) throw new Error("DATABASE_URL required for TRACE_STORE=postgres");
+          return new PostgresTraceStore(db);
+        })()
+      : new InMemoryTraceStore();
+
+  const exporters = [];
+  if (config.TRACE_EXPORT === "langfuse") {
+    if (!config.LANGFUSE_PUBLIC_KEY || !config.LANGFUSE_SECRET_KEY) {
+      throw new Error("LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY required for TRACE_EXPORT=langfuse");
+    }
+    exporters.push(
+      new LangfuseExporter({
+        publicKey: config.LANGFUSE_PUBLIC_KEY,
+        secretKey: config.LANGFUSE_SECRET_KEY,
+        baseUrl: config.LANGFUSE_BASE_URL,
+      }),
+    );
   }
-  return new InMemoryTraceStore();
+  if (config.TRACE_EXPORT === "otel") {
+    if (!config.OTEL_EXPORTER_OTLP_ENDPOINT) {
+      throw new Error("OTEL_EXPORTER_OTLP_ENDPOINT required for TRACE_EXPORT=otel");
+    }
+    exporters.push(
+      new OtelExporter({
+        endpoint: config.OTEL_EXPORTER_OTLP_ENDPOINT,
+        serviceName: "agentd",
+      }),
+    );
+  }
+
+  return exporters.length > 0 ? new ExportingTraceStore(inner, exporters) : inner;
 }
 
 /** Wire every adapter from config (local-by-default) and return the running platform. */
@@ -122,6 +162,7 @@ export async function buildPlatform(env: NodeJS.ProcessEnv = process.env): Promi
     config,
     registry,
     dispatch,
+    gateway,
     trace,
     db,
     deploy,

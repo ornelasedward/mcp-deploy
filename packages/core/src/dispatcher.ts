@@ -5,7 +5,7 @@ import type { Gateway, Budget } from "@platform/gateway";
 import type { LlmUsage } from "@platform/sdk";
 import type { BridgeRegistry, Runtime } from "@platform/runtime";
 import { parseEgressAllowlist } from "@platform/runtime";
-import type { DurableEngine } from "@platform/durable";
+import type { DurableEngine, StepApi } from "@platform/durable";
 
 export interface DispatchRequest<I = unknown> {
   agent: ResolvedAgent<I, unknown>;
@@ -60,8 +60,16 @@ const noopTools: ToolHost = {
  * Normalizes the request, wraps it in a durable workflow, builds a per-run Ctx (gateway +
  * trace + memory), runs it in the isolated runtime, and records cost + source.
  */
+export interface DispatchOptions {
+  /** Inngest workflow step — enables ctx.step.waitForEvent (HITL). */
+  durable?: DurableEngine;
+}
+
 export function createDispatcher(deps: DispatcherDeps) {
-  return async function dispatch<I, O>(req: DispatchRequest<I>): Promise<RunResult<O>> {
+  return async function dispatch<I, O>(
+    req: DispatchRequest<I>,
+    options?: DispatchOptions,
+  ): Promise<RunResult<O>> {
     const runId = req.idempotencyKey ?? randomUUID();
     const started = Date.now();
     let costUsd = 0;
@@ -115,22 +123,45 @@ export function createDispatcher(deps: DispatcherDeps) {
       deps.bridgeRegistry.register({ runId, orgId: req.orgId, ctx, egressAllowlist });
     }
 
+    const durable = options?.durable ?? deps.durable;
+
+    function attachStep(step: StepApi) {
+      ctx.step = {
+        waitForEvent: async (name, wopts) => {
+          await deps.trace.updateRunStatus?.(runId, "suspended", { pendingEvent: name });
+          trace.event("run.suspended", { event: name });
+          try {
+            const data = await step.waitForEvent(name, wopts);
+            await deps.trace.updateRunStatus?.(runId, "running");
+            trace.event("run.resumed", { event: name });
+            return data;
+          } catch (err) {
+            await deps.trace.updateRunStatus?.(runId, "failed", { error: String(err) });
+            throw err;
+          }
+        },
+      };
+    }
+
     try {
-      const output = await deps.durable.execute(
+      const output = await durable.execute(
         { workflow: "run", id: runId },
-        (step) => step.run("execute", () =>
-          deps.runtime.execute<I, O>({
-            agent: req.agent as ResolvedAgent<I, O>,
-            input: req.input,
-            ctx,
-            meta: {
-              orgId: req.orgId,
-              snapshotRef: req.snapshotRef,
-              egressAllowlist,
-              secrets: secretsMap,
-            },
-          }),
-        ),
+        async (step) => {
+          attachStep(step);
+          return step.run("execute", () =>
+            deps.runtime.execute<I, O>({
+              agent: req.agent as ResolvedAgent<I, O>,
+              input: req.input,
+              ctx,
+              meta: {
+                orgId: req.orgId,
+                snapshotRef: req.snapshotRef,
+                egressAllowlist,
+                secrets: secretsMap,
+              },
+            }),
+          );
+        },
       );
       const result: RunResult<O> = {
         runId, status: "succeeded", output, costUsd, durationMs: Date.now() - started,

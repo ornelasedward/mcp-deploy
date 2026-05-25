@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
-import { readFile } from "node:fs/promises";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
@@ -14,10 +13,16 @@ import {
   streamAgentRun,
 } from "@platform/core";
 import { handleMcpHttp } from "@platform/mcp";
-import { inngest } from "@platform/durable";
-import { runEvals } from "@platform/evals";
-import { verifyGitHubSignature, parseGitHubWebhook } from "@platform/build";
-import { DashboardStore, OrgStore } from "@platform/db";
+import { enqueueBackground, inngest } from "@platform/durable";
+import type { Config } from "@platform/config";
+import {
+  verifyGitHubSignature,
+  parseGitHubWebhook,
+  runDeployEvals,
+  formatEvalPrComment,
+  postGithubPrComment,
+} from "@platform/build";
+import { DashboardStore, OrgStore, getProductionEvalBaseline } from "@platform/db";
 import { canDeploy, canRun } from "@platform/auth";
 import { handleBridgeRequest } from "@platform/runtime";
 import { createAuthMiddleware, requireRole } from "./middleware/auth";
@@ -28,6 +33,61 @@ import { inngestHandler } from "./inngest";
 
 const platform = await buildPlatform();
 const resolveBudget = (orgId: string) => platform.resolveBudget(orgId);
+
+function preferAsyncRun(config: Config, query: { async?: string; sync?: string }): boolean {
+  if (query.sync === "1") return false;
+  if (query.async === "1") return true;
+  return config.DURABLE === "inngest" && config.DEPLOY_ENV !== "development";
+}
+
+async function queueAgentRun(opts: {
+  runId: string;
+  slug: string;
+  input: unknown;
+  orgId: string;
+  source: "http";
+  projectId?: string;
+}) {
+  const agent = platform.registry.get(opts.slug, opts.orgId);
+  if (!agent) throw new Error(`agent not found: ${opts.slug}`);
+
+  await platform.trace.beginRun?.({
+    runId: opts.runId,
+    orgId: opts.orgId,
+    source: opts.source,
+    agentSlug: agent.slug,
+    input: opts.input,
+    status: "queued",
+  });
+
+  const budget = await resolveBudget(opts.orgId);
+  const payload = {
+    slug: opts.slug,
+    input: opts.input,
+    orgId: opts.orgId,
+    runId: opts.runId,
+    source: opts.source,
+    projectId: opts.projectId,
+  };
+
+  if (platform.config.INNGEST_EVENT_KEY) {
+    await inngest.send({ name: "agent/run", data: payload });
+    return;
+  }
+
+  enqueueBackground(async () => {
+    await platform.trace.updateRunStatus?.(opts.runId, "running");
+    await platform.dispatch({
+      agent,
+      input: opts.input,
+      source: opts.source,
+      orgId: opts.orgId,
+      idempotencyKey: opts.runId,
+      budget,
+      projectId: opts.projectId,
+    });
+  });
+}
 const publicRateLimiter = new IpRateLimiter(platform.config.PUBLIC_RATE_LIMIT_PER_HOUR);
 const orgStore = platform.db ? new OrgStore(platform.db) : undefined;
 const dashboardStore = platform.db ? new DashboardStore(platform.db) : undefined;
@@ -164,26 +224,30 @@ app.post("/v1/agents/:slug/run", async (c) => {
   const agent = platform.registry.get(c.req.param("slug"), auth.orgId);
   if (!agent || !isEnabled(agent, "http")) return c.json({ error: "not found" }, 404);
 
-  const asyncRun = c.req.query("async") === "1";
   const idempotencyKey = c.req.header("idempotency-key") ?? randomUUID();
   const { input } = await c.req.json<{ input: unknown }>();
+  const projectId = c.req.query("projectId") ?? undefined;
 
-  if (asyncRun && platform.config.DURABLE === "inngest") {
-    await inngest.send({
-      name: "agent/run",
-      data: {
-        slug: agent.slug,
-        input,
-        orgId: auth.orgId,
-        runId: idempotencyKey,
-        source: "http",
-      },
+  if (preferAsyncRun(platform.config, c.req.query())) {
+    await queueAgentRun({
+      runId: idempotencyKey,
+      slug: agent.slug,
+      input,
+      orgId: auth.orgId,
+      source: "http",
+      projectId,
     });
-    return c.json({ runId: idempotencyKey, status: "queued" }, 202);
+    return c.json(
+      {
+        runId: idempotencyKey,
+        status: "queued",
+        poll: `${platform.config.PLATFORM_BASE_URL}/v1/agents/${agent.slug}/runs/${idempotencyKey}`,
+      },
+      202,
+    );
   }
 
   const budget = await resolveBudget(auth.orgId);
-  const projectId = c.req.query("projectId") ?? undefined;
   const result = await platform.dispatch({
     agent,
     input,
@@ -237,6 +301,86 @@ app.all("/mcp/:slug", async (c) => {
     c.req.raw,
   );
   return res;
+});
+
+app.get("/v1/agents/:slug/runs/:runId", async (c) => {
+  const auth = c.get("auth");
+  const slug = c.req.param("slug");
+  const runId = c.req.param("runId");
+  const agent = platform.registry.get(slug, auth.orgId);
+  if (!agent) return c.json({ error: "not found" }, 404);
+
+  const snapshot = await platform.trace.getRun?.(runId);
+  if (!snapshot || snapshot.orgId !== auth.orgId) {
+    return c.json({ error: "not found" }, 404);
+  }
+
+  const events = await platform.trace.list(runId);
+  const suspended = events.find((e) => e.type === "run.suspended");
+  const pendingEvent =
+    snapshot.pendingEvent ??
+    (suspended?.payload as { event?: string } | undefined)?.event;
+
+  return c.json({
+    run: {
+      id: snapshot.runId,
+      status: snapshot.status,
+      source: snapshot.source,
+      agentSlug: snapshot.agentSlug,
+      costUsd: snapshot.costUsd,
+      durationMs: snapshot.durationMs ?? null,
+      pendingEvent,
+      input: snapshot.input,
+      output: snapshot.output,
+      error: snapshot.error,
+      createdAt: new Date(snapshot.createdAt).toISOString(),
+    },
+    events,
+  });
+});
+
+app.post("/v1/agents/:slug/runs/:runId/resume", async (c) => {
+  const auth = c.get("auth");
+  const forbidden = requireRole(c, canRun);
+  if (forbidden) return forbidden;
+
+  const slug = c.req.param("slug");
+  const runId = c.req.param("runId");
+  const agent = platform.registry.get(slug, auth.orgId);
+  if (!agent) return c.json({ error: "not found" }, 404);
+
+  const snapshot = await platform.trace.getRun?.(runId);
+  if (!snapshot || snapshot.orgId !== auth.orgId) {
+    return c.json({ error: "not found" }, 404);
+  }
+  if (snapshot.status !== "suspended") {
+    return c.json({ error: "run is not suspended", status: snapshot.status }, 409);
+  }
+
+  const body = await c.req.json<{ eventName?: string; payload?: unknown }>();
+  const events = await platform.trace.list(runId);
+  const suspended = events.find((e) => e.type === "run.suspended");
+  const eventName =
+    body.eventName ??
+    snapshot.pendingEvent ??
+    (suspended?.payload as { event?: string } | undefined)?.event ??
+    "approval";
+
+  if (platform.config.DURABLE !== "inngest") {
+    return c.json({ error: "resume requires DURABLE=inngest with Inngest dev server or keys" }, 400);
+  }
+
+  await inngest.send({
+    name: "agent/resume",
+    data: {
+      runId,
+      orgId: auth.orgId,
+      eventName,
+      payload: body.payload ?? { approved: true },
+    },
+  });
+
+  return c.json({ ok: true, runId, eventName });
 });
 
 app.get("/v1/agents/:slug/runs/:runId/trace", async (c) => {
@@ -316,28 +460,44 @@ app.post("/v1/deploy", async (c) => {
 
   platform.registry.register(result.agent, orgId);
 
-  let evalSummary: { passed: number; total: number } | undefined;
-  if (result.agent.evals) {
-    try {
-      const casesPath = resolve(
-        result.agentRoot,
-        result.agent.evals.replace(/^\.\//, ""),
-        "cases.json",
-      );
-      const cases = JSON.parse(await readFile(casesPath, "utf8"));
-      const results = await runEvals(result.agent, cases, {
-        dispatch: platform.dispatch,
-        orgId,
-        budget,
-      });
-      await platform.deploy.saveEvalResults(result.deploymentId, results);
-      evalSummary = { passed: results.filter((r) => r.passed).length, total: results.length };
-    } catch (err) {
-      console.warn("[deploy] evals skipped:", err);
-    }
+  const budget = await resolveBudget(orgId);
+  let evalOutcome: Awaited<ReturnType<typeof runDeployEvals>> = null;
+  try {
+    evalOutcome = await runDeployEvals({
+      agent: result.agent,
+      agentRoot: result.agentRoot,
+      deploymentId: result.deploymentId,
+      orgId,
+      projectId: result.projectId,
+      dispatch: platform.dispatch,
+      budget,
+      gateway: platform.gateway,
+      deploy: platform.deploy,
+      maxRegression: platform.config.EVAL_REGRESSION_DELTA,
+      blockDeploy: platform.config.EVAL_BLOCK_DEPLOY,
+      getBaseline: (projectId) =>
+        platform.db
+          ? getProductionEvalBaseline(platform.db, projectId)
+          : Promise.resolve(new Map()),
+    });
+  } catch (err) {
+    console.warn("[deploy] evals skipped:", err);
   }
 
-  return c.json({ status: result.status, ...result, evalSummary });
+  const status = evalOutcome?.blocked ? "failed" : result.status;
+  return c.json({
+    status,
+    ...result,
+    evalSummary: evalOutcome
+      ? {
+          passed: evalOutcome.results.filter((r) => r.passed).length,
+          total: evalOutcome.results.length,
+          gatePassed: evalOutcome.gate.passed,
+          avgScore: evalOutcome.gate.avgScore,
+        }
+      : undefined,
+    evalGate: evalOutcome?.gate,
+  });
 });
 
 app.post("/v1/webhooks/github", async (c) => {
@@ -376,8 +536,58 @@ app.post("/v1/webhooks/github", async (c) => {
 
   platform.registry.register(result.agent, orgId);
 
+  const budget = await resolveBudget(orgId);
+  let evalOutcome: Awaited<ReturnType<typeof runDeployEvals>> = null;
+  try {
+    evalOutcome = await runDeployEvals({
+      agent: result.agent,
+      agentRoot: result.agentRoot,
+      deploymentId: result.deploymentId,
+      orgId,
+      projectId: result.projectId,
+      dispatch: platform.dispatch,
+      budget,
+      gateway: platform.gateway,
+      deploy: platform.deploy,
+      maxRegression: platform.config.EVAL_REGRESSION_DELTA,
+      blockDeploy: platform.config.EVAL_BLOCK_DEPLOY && parsed.isPreview,
+      getBaseline: (projectId) =>
+        platform.db
+          ? getProductionEvalBaseline(platform.db, projectId)
+          : Promise.resolve(new Map()),
+    });
+  } catch (err) {
+    console.warn("[webhook] evals skipped:", err);
+  }
+
+  if (
+    parsed.isPreview &&
+    parsed.prNumber &&
+    platform.config.GITHUB_TOKEN &&
+    evalOutcome
+  ) {
+    try {
+      const baseline = await getProductionEvalBaseline(platform.db!, result.projectId);
+      const body = formatEvalPrComment({
+        slug: result.agent.slug,
+        results: evalOutcome.results,
+        gate: evalOutcome.gate,
+        baseline,
+        urls: result.urls,
+      });
+      await postGithubPrComment({
+        token: platform.config.GITHUB_TOKEN,
+        repoFullName: parsed.repoFullName,
+        prNumber: parsed.prNumber,
+        body,
+      });
+    } catch (err) {
+      console.warn("[webhook] PR comment failed:", err);
+    }
+  }
+
   return c.json({
-    status: "deployed",
+    status: evalOutcome?.blocked ? "blocked" : "deployed",
     event: parsed.event,
     production: parsed.isProduction,
     orgId,
@@ -385,6 +595,14 @@ app.post("/v1/webhooks/github", async (c) => {
     urls: result.urls,
     deploymentId: result.deploymentId,
     artifactDir: result.artifactDir,
+    evalGate: evalOutcome?.gate,
+    evalSummary: evalOutcome
+      ? {
+          passed: evalOutcome.results.filter((r) => r.passed).length,
+          total: evalOutcome.results.length,
+          gatePassed: evalOutcome.gate.passed,
+        }
+      : undefined,
   });
 });
 

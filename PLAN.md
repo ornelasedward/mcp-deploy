@@ -189,10 +189,10 @@ A stranger can:
 
 **Tasks:**
 
-- [ ] Default long runs to Inngest (`DURABLE=inngest` in prod)
-- [ ] `POST /v1/agents/:slug/run` returns `202` + `runId`; poll `GET .../runs/:id`
-- [ ] `waitForEvent` + `POST .../runs/:id/resume` for approvals
-- [ ] UI: suspended state, approve button
+- [x] Default long runs to Inngest (`DURABLE=inngest` in prod)
+- [x] `POST /v1/agents/:slug/run` returns `202` + `runId`; poll `GET .../runs/:id`
+- [x] `waitForEvent` + `POST .../runs/:id/resume` for approvals
+- [x] UI: suspended state, approve button
 
 **Exit:** 10-minute agent run survives API restart; human can approve mid-run.
 
@@ -204,10 +204,10 @@ A stranger can:
 
 **Tasks:**
 
-- [ ] Export traces to Langfuse or OTel backend
-- [ ] `llm-judge` grader in `packages/evals`
-- [ ] Deploy pipeline: fail if score < baseline (configurable delta)
-- [ ] PR comment: eval diff vs main
+- [x] Export traces to Langfuse or OTel backend
+- [x] `llm-judge` grader in `packages/evals`
+- [x] Deploy pipeline: fail if score < baseline (configurable delta)
+- [x] PR comment: eval diff vs main
 
 **Exit:** Bad deploy cannot reach production.
 

@@ -7,6 +7,15 @@ const Env = z.object({
   DURABLE: z.enum(["local", "inngest"]).default("local"),
   GATEWAY: z.enum(["local", "live"]).default("local"),
   TRACE_STORE: z.enum(["memory", "postgres"]).default("memory"),
+  /** Export run_events to Langfuse or OTel (in addition to local trace store). */
+  TRACE_EXPORT: z.enum(["none", "langfuse", "otel"]).default("none"),
+  LANGFUSE_PUBLIC_KEY: z.string().optional(),
+  LANGFUSE_SECRET_KEY: z.string().optional(),
+  LANGFUSE_BASE_URL: z.string().default("https://cloud.langfuse.com"),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
+  /** Max score drop vs production baseline before deploy is blocked. */
+  EVAL_REGRESSION_DELTA: z.coerce.number().default(0.05),
+  EVAL_BLOCK_DEPLOY: z.coerce.boolean().default(true),
 
   DATABASE_URL: z.string().optional(),
   E2B_API_KEY: z.string().optional(),
