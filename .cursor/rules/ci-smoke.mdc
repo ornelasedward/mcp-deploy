@@ -27,6 +27,9 @@ alwaysApply: false
 
 - Reproduce locally: `pnpm smoke` or `RUNTIME=e2b E2B_MOCK=true pnpm smoke`.
 - Web build: `pnpm --filter @platform/web build` with `NEXT_PUBLIC_API_KEY` set.
+- `ERR_PNPM_IGNORED_BUILDS`: add the package to `allowBuilds` in `pnpm-workspace.yaml` (pnpm 11 `strictDepBuilds`), or run `pnpm approve-builds` and commit the yaml.
+- `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`: add version to `minimumReleaseAgeExclude` or wait 24h after publish.
+- Match CI pnpm: `corepack prepare pnpm@11.3.0 --activate` (or `npx pnpm@11.3.0 install --frozen-lockfile`).
 
 ## Hooks (optional)
 

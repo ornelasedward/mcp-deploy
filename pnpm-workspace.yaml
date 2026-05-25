@@ -10,6 +10,13 @@ minimumReleaseAgeExclude:
   - hono@4.12.23
   - undici@7.26.0
 
+# pnpm 11 strictDepBuilds: allow postinstall scripts required by the stack.
+allowBuilds:
+  esbuild: true
+  sharp: true
+  protobufjs: true
+  "@clerk/shared": true
+
 catalog:
   zod: ^4.4.3
   typescript: ^6.0.3
