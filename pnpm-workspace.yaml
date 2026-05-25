@@ -3,6 +3,13 @@ packages:
   - "packages/*"
   - "examples/*"
 
+# pnpm 11 applies a 24h minimumReleaseAge supply-chain check on frozen installs.
+# Exclude lockfile-pinned versions until they mature; add entries when bumping deps.
+minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - hono@4.12.23
+  - undici@7.26.0
+
 catalog:
   zod: ^4.4.3
   typescript: ^6.0.3
