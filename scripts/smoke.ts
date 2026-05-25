@@ -28,7 +28,7 @@ import {
 } from "@platform/build";
 import { buildMcpServerCard } from "@platform/mcp";
 import { listDirectoryAgents } from "@platform/core";
-import { BillingLimitError, FREE_TIER } from "@platform/billing";
+import { BillingLimitError, FREE_TIER, billingHttpStatus } from "@platform/billing";
 import { signSamlSession, verifySamlSession } from "@platform/auth";
 import { auditLineToJsonl, type AuditLine } from "@platform/db";
 import { readFile } from "node:fs/promises";
@@ -368,6 +368,26 @@ async function main() {
   };
   const line = auditLineToJsonl(auditSample);
   assert(line.includes('"kind":"run"'), "audit export JSONL line format");
+
+  // 13. P13: dispatch + HTTP status mapping when over free-tier limit
+  const dispatchLimitOrg = "org_smoke_dispatch_limit";
+  for (let i = 0; i < FREE_TIER.runsPerMonth; i++) {
+    await platform.billing.recordRunStarted(dispatchLimitOrg);
+  }
+  let dispatchBlocked = false;
+  try {
+    await platform.dispatch({
+      agent: supportTriage,
+      input: { message: "over free tier via dispatch" },
+      source: "http",
+      orgId: dispatchLimitOrg,
+      budget,
+    });
+  } catch (e) {
+    dispatchBlocked = e instanceof BillingLimitError;
+    assert(billingHttpStatus(e) === 402, "BillingLimitError maps to HTTP 402");
+  }
+  assert(dispatchBlocked, "dispatch rejects run when free tier exhausted");
 
   console.log("\nSMOKE GREEN — spine works end to end.");
 }

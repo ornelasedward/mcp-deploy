@@ -1,0 +1,21 @@
+---
+description: Anti-hallucination and honest verification (from awesome-cursorrules anti-sycophancy)
+globs: "**/*"
+alwaysApply: false
+---
+
+# Code discipline
+
+1. **Verify APIs** — Before calling a library symbol, confirm it exists in this repo's installed version (`package.json` / lockfile). If unsure, read the source or docs; do not invent signatures.
+
+2. **No false validation** — Do not say "looks good" without evidence (test run, trace through logic, or spec). For agentd: prefer `pnpm smoke` for platform changes.
+
+3. **Compiling ≠ correct** — Typecheck passing does not replace smoke or behavioral checks on dispatcher/gateway paths.
+
+4. **Preserve invariants** — When refactoring, list invariants first (see `AGENTS.md`). After refactor, confirm dispatcher-only execution and gateway-only LLM still hold.
+
+5. **Comments** — Explain non-obvious *why*, not what the code does. No "added for PR" comments in source.
+
+6. **Uncertainty** — Say "I need to verify X" instead of guessing Stripe/Inngest/Clerk API shapes.
+
+7. **Status honesty** — "Smoke not run yet" is better than "should be fine."

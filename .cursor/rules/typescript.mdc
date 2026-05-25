@@ -1,0 +1,37 @@
+---
+description: TypeScript standards for the agentd monorepo
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# TypeScript (adapted from awesome-cursorrules)
+
+## Types
+
+- Prefer `interface` for object shapes; use `type` for unions and mapped types.
+- Avoid `any`; use `unknown` and narrow with type guards.
+- Use strict settings; enable null checks before dereferencing.
+- Public package APIs should have explicit return types on exported functions.
+
+## Naming
+
+- `PascalCase` for types, interfaces, classes.
+- `camelCase` for functions, variables, methods.
+- `UPPER_CASE` for module-level constants.
+- Boolean names: `is*`, `has*`, `can*` (e.g. `isProPlan`, `hardStop`).
+
+## Structure
+
+- Keep shared contracts in `packages/sdk`; do not duplicate manifest types in apps.
+- Barrel `index.ts` exports per package; apps import `@platform/*` workspace packages only.
+- Prefer `async/await` over raw Promise chains.
+
+## Errors
+
+- Use domain errors (`BillingLimitError`, gateway budget errors) with stable `code` fields where HTTP mapping matters.
+- Do not swallow errors in surfaces — map to HTTP status at the route layer.
+
+## Agentd-specific
+
+- Do not add framework-specific types to `sdk` without a migration path for all adapters.
+- When adding env vars, extend `packages/config` Zod schema and `.env.example`.

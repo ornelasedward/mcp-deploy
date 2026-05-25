@@ -1,0 +1,36 @@
+---
+description: Hono API conventions (adapted from awesome-cursorrules Hono + agentd)
+globs: "apps/api/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Hono API (`apps/api`)
+
+## Routing
+
+- Register routes in `apps/api/src/routes/*` or `index.ts`; keep handlers thin.
+- Public paths: webhooks (`/v1/webhooks/*`), SAML (`/v1/auth/saml/*`), health, Inngest — see auth middleware `PUBLIC_PATHS`.
+- Stripe webhooks need **raw body** before JSON parse (`c.req.text()`).
+
+## Execution
+
+- **Never** call agent `handler` directly from a route — use `platform.dispatch` or `queueAgentRun`.
+- Resolve budget via `platform.resolveBudget(orgId)`; map `BillingLimitError` to HTTP 402.
+- All LLM usage stays in gateway via dispatcher (`ctx.llm` in runtime).
+
+## Auth
+
+- Use `createAuthMiddleware`; respect `AuthContext` org scoping.
+- `requireRole` for deploy vs run capabilities (`@platform/auth`).
+
+## Errors
+
+- Return JSON `{ error, code? }` with appropriate status.
+- Do not leak stack traces in production responses.
+
+## New endpoints checklist
+
+- Org-scoped? Assert `auth.orgId` matches `:orgId`.
+- Needs DB? Guard when `platform.db` is undefined.
+- New public route? Add to `PUBLIC_PATHS` in `middleware/auth.ts`.
+- Platform behavior change? Extend `scripts/smoke.ts`.

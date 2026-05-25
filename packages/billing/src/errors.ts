@@ -7,3 +7,8 @@ export class BillingLimitError extends Error {
     this.name = "BillingLimitError";
   }
 }
+
+/** HTTP mapping used by apps/api (402 Payment Required). */
+export function billingHttpStatus(err: unknown): 402 | null {
+  return err instanceof BillingLimitError ? 402 : null;
+}

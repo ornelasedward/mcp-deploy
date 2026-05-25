@@ -40,6 +40,18 @@ jobs:
           DURABLE: local
           TRACE_STORE: memory
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck:ci
+
   build-web:
     runs-on: ubuntu-latest
     steps:

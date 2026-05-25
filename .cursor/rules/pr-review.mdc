@@ -1,0 +1,32 @@
+---
+description: PR review angles with agentd security focus (from awesome-cursorrules)
+globs: "**/*"
+alwaysApply: false
+---
+
+# PR review
+
+When asked to review a PR, pick an angle: **security** (default for agentd), **performance**, **tests**, **architecture**. Cite `path:line`. Severity: blocker | important | nit. Verdict: `Safe to merge | needs changes | reject`.
+
+## Security (agentd priorities)
+
+1. Auth on new routes; no IDOR on `:orgId` / `:runId`.
+2. Secrets not in logs, traces, or client bundles; trace redaction intact.
+3. Webhook HMAC (GitHub, Stripe) verified on raw body where required.
+4. No direct LLM SDK calls in agents or API handlers bypassing gateway.
+5. Handler code not executed in API process without runtime isolation.
+
+## Performance
+
+- N+1 in Drizzle loops; unbounded audit/export queries.
+- Sequential awaits where batching is safe.
+
+## Tests
+
+- New surfaces/adapters need `scripts/smoke.ts` coverage.
+- CI matrix: local smoke + `E2B_MOCK` when touching runtime.
+
+## Architecture
+
+- Boundary respect: `packages/sdk` contracts, dispatcher-only runs.
+- No vendor imports in `core` without adapter interface.

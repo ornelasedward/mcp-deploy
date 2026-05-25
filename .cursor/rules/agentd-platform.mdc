@@ -1,0 +1,30 @@
+---
+description: agentd platform invariants — contracts, dispatcher, gateway, smoke (always on)
+alwaysApply: true
+---
+
+# agentd platform (read with AGENTS.md)
+
+`AGENTS.md` is the source of truth. These rules reinforce it for every session.
+
+## Non-negotiable architecture
+
+1. **Contracts:** `packages/sdk` defines `AgentManifest`, `Ctx`, `Surface`. Changing them requires updating all consumers + `scripts/smoke.ts`.
+2. **One package = one job:** Do not reach across `packages/*` except via published exports.
+3. **Interfaces, not vendors:** New capabilities go behind `Runtime`, `DurableEngine`, `Gateway`, or `TraceStore` with Local + vendor impls.
+4. **Single execution path:** All surfaces (http, mcp, cli, playground, eval) use `core/createDispatcher` — never invoke agent handlers from a surface directly.
+5. **Gateway-only LLM:** Agent code uses `ctx.llm` only — no direct provider SDK calls in handlers.
+6. **Regression net:** After meaningful changes run `pnpm smoke`. New surface/adapter → add a smoke assertion.
+
+## Security & durability
+
+- Untrusted handler code runs in `runtime` (E2B in prod), not the API process.
+- `run_events` is append-only; redact secrets before persist (`packages/trace`).
+- Runs are idempotent via `idempotencyKey`; webhooks dedupe by delivery id / commit sha.
+- Budget caps enforced in the gateway, not in agent handlers.
+
+## Monorepo commands
+
+- Install: `pnpm install` (uses `packageManager` in root `package.json` — do not pin a conflicting pnpm version in CI).
+- Migrate: `pnpm migrate` when `DATABASE_URL` is set.
+- API: `pnpm api` · Web: `pnpm web` · Prod compose: `pnpm prod`.

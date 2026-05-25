@@ -1,0 +1,33 @@
+---
+description: CI and smoke test expectations
+globs: ".github/**/*,scripts/smoke.ts,scripts/typecheck.ts"
+alwaysApply: false
+---
+
+# CI & smoke
+
+## GitHub Actions
+
+- Use `pnpm/action-setup@v4` **without** a `version:` key — read `packageManager` from root `package.json` (`pnpm@11.3.0`).
+- Node 22; `pnpm install --frozen-lockfile`.
+- Workflows: `.github/workflows/ci.yml` (smoke matrix, web build, helm lint), `.github/workflows/e2e.yml` (optional path filter).
+
+## Typecheck (`pnpm typecheck:ci`)
+
+- Checks an allowlist of leaf packages in `scripts/typecheck.ts` (expand as `core` / `api` debt is fixed).
+- CI job: `typecheck` in `.github/workflows/ci.yml`.
+
+## Smoke (`pnpm smoke`)
+
+- End-to-end platform guarantee in **local** mode (no vendor accounts required).
+- Registers example agent, exercises dispatcher, MCP, budgets, billing free tier, SAML session, eval gate, E2B mock.
+- **Must stay green** before merging platform changes.
+
+## When CI fails
+
+- Reproduce locally: `pnpm smoke` or `RUNTIME=e2b E2B_MOCK=true pnpm smoke`.
+- Web build: `pnpm --filter @platform/web build` with `NEXT_PUBLIC_API_KEY` set.
+
+## Hooks (optional)
+
+If the user repeatedly asks to run smoke after edits, suggest `.cursor/hooks.json` (see skill `suggesting-cursor-hooks`).

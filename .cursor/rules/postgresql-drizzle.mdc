@@ -1,0 +1,36 @@
+---
+description: Postgres migrations and Drizzle schema (from awesome-cursorrules PostgreSQL)
+globs: "packages/db/**/*.{ts,sql}"
+alwaysApply: false
+---
+
+# Postgres & Drizzle (`packages/db`)
+
+## Schema
+
+- Use `timestamptz` for timestamps in SQL migrations.
+- Foreign keys with explicit `ON DELETE` behavior.
+- Prefer `text` org IDs and UUID run IDs consistent with existing tables.
+
+## Migrations
+
+- Add numbered files under `packages/db/migrations/` (`0007_*.sql`) — do not edit shipped migrations in place.
+- Run `pnpm migrate` locally when testing `TRACE_STORE=postgres`.
+- Mount new migrations in `docker-compose.yml` initdb sequence when adding tables.
+
+## Queries (Drizzle)
+
+- Use Drizzle builders — never string-interpolate SQL with user input.
+- Select explicit columns for hot paths; avoid unbounded lists (audit export uses caps).
+- Index FK columns on new tables.
+
+## agentd data rules
+
+- `run_events` stays append-only.
+- Secrets: `project_secrets` encrypted at rest; never write secret values to `run_events`.
+- Org-scoped queries must filter by `orgId` from auth context.
+
+## Forbidden
+
+- `TRUNCATE` / destructive ops in app code paths.
+- Plaintext secrets in migrations or seed data committed to git.

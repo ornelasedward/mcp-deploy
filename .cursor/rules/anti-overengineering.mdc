@@ -1,0 +1,23 @@
+---
+description: Keep changes minimal and scoped to the request (from awesome-cursorrules)
+globs: "**/*"
+alwaysApply: false
+---
+
+# Anti-over-engineering
+
+Only change what was asked. Simplest correct solution first. When unsure, ask.
+
+Do not:
+
+- Modify unrelated files or refactor drive-by.
+- Add abstractions with a single caller.
+- Import new dependencies without a concrete need.
+- Rewrite whole files for small fixes.
+- Add error handling for impossible or extremely unlikely paths.
+
+Before finishing:
+
+- Confirm only requested behavior changed.
+- Check for a simpler approach.
+- List any files touched outside the stated scope.

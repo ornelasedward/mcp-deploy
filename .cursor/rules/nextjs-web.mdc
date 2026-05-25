@@ -1,0 +1,29 @@
+---
+description: Next.js dashboard conventions for apps/web
+globs: "apps/web/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Next.js web (`apps/web`)
+
+## Server vs client
+
+- **Server components / RSC:** import `apiFetch` from `lib/api-server.ts` (uses `server-only`).
+- **Client components:** import `apiBase`, `clientApiHeaders`, `devOrgId` from `lib/api-client.ts` — never import `@clerk/nextjs/server` in client files.
+- Root layout sets `dynamic = "force-dynamic"` — pages call the live API; do not rely on static prerender for dashboard data.
+
+## API calls
+
+- `NEXT_PUBLIC_API_BASE` for browser; server uses same via `api-server`.
+- Dev auth: `x-org-id` + `x-user-id` or `NEXT_PUBLIC_API_KEY`; Clerk when publishable key is set.
+- SAML: `SamlTokenCapture` stores `agentd_saml_token` in `sessionStorage`; client sends `Authorization: Bearer`.
+
+## UI
+
+- Keep dashboard simple; match existing inline styles unless migrating to a design system.
+- Link to `/dashboard/billing` for Stripe; do not embed secret keys in the client bundle.
+
+## Build / CI
+
+- Production build must pass without a running API (`force-dynamic` avoids prerender fetch).
+- CI sets `NEXT_PUBLIC_API_KEY` and `NEXT_PUBLIC_DEV_ORG_ID` for build env.

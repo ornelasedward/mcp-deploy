@@ -1,0 +1,26 @@
+---
+description: Conventional Commits for this repo (from awesome-cursorrules)
+globs: "**/*"
+alwaysApply: false
+---
+
+# Git commits
+
+Use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+```
+
+**Types:** `feat`, `fix`, `docs`, `refactor`, `test`, `ci`, `chore`, `perf`
+
+**Scopes (examples):** `api`, `web`, `core`, `db`, `billing`, `runtime`, `mcp`, `smoke`
+
+**Rules:**
+
+- One logical change per commit; do not commit unless the user asked.
+- Never commit `.env`, keys, or `.artifacts`.
+- After platform changes, mention smoke status in the PR body, not only in chat.
+- Breaking SDK contract changes: `feat(sdk)!:` or footer `BREAKING CHANGE:`.

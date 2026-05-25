@@ -29,6 +29,7 @@ import { canDeploy, canRun } from "@platform/auth";
 import { handleBridgeRequest } from "@platform/runtime";
 import { createAuthMiddleware, requireRole } from "./middleware/auth";
 import { BillingLimitError } from "@platform/billing";
+import { billingLimitResponse } from "./billing-http";
 import { orgRoutes } from "./routes/orgs";
 import { dashboardRoutes } from "./routes/dashboard";
 import { publicRoutes } from "./routes/public";
@@ -259,14 +260,20 @@ app.post("/v1/agents/:slug/run", async (c) => {
   const projectId = c.req.query("projectId") ?? undefined;
 
   if (preferAsyncRun(platform.config, c.req.query())) {
-    await queueAgentRun({
-      runId: idempotencyKey,
-      slug: agent.slug,
-      input,
-      orgId: auth.orgId,
-      source: "http",
-      projectId,
-    });
+    try {
+      await queueAgentRun({
+        runId: idempotencyKey,
+        slug: agent.slug,
+        input,
+        orgId: auth.orgId,
+        source: "http",
+        projectId,
+      });
+    } catch (e) {
+      const denied = billingLimitResponse(c, e);
+      if (denied) return denied;
+      throw e;
+    }
     return c.json(
       {
         runId: idempotencyKey,
@@ -290,9 +297,8 @@ app.post("/v1/agents/:slug/run", async (c) => {
     });
     return c.json(result, result.status === "succeeded" ? 200 : 500);
   } catch (e) {
-    if (e instanceof BillingLimitError) {
-      return c.json({ error: e.message, code: e.code }, 402);
-    }
+    const denied = billingLimitResponse(c, e);
+    if (denied) return denied;
     throw e;
   }
 });
@@ -305,22 +311,38 @@ app.post("/v1/agents/:slug/run/stream", async (c) => {
   const agent = platform.registry.get(c.req.param("slug"), auth.orgId);
   if (!agent || !isEnabled(agent, "http")) return c.json({ error: "not found" }, 404);
 
-  const body = await c.req.json<{ input: unknown }>();
-
-  return sseResponse(async (send) => {
-    send("run.start", { slug: agent.slug, orgId: auth.orgId });
+  try {
+    await platform.billing.assertCanRun(auth.orgId, agent.distribute);
+    const body = await c.req.json<{ input: unknown }>();
     const budget = await resolveBudget(auth.orgId);
-    await streamAgentRun({
-      dispatch: platform.dispatch,
-      trace: platform.trace,
-      agent,
-      input: body.input,
-      orgId: auth.orgId,
-      source: "playground",
-      budget,
-      onEvent: (event, data) => send(event, data),
+
+    return sseResponse(async (send) => {
+      send("run.start", { slug: agent.slug, orgId: auth.orgId });
+      try {
+        await streamAgentRun({
+          dispatch: platform.dispatch,
+          trace: platform.trace,
+          agent,
+          input: body.input,
+          orgId: auth.orgId,
+          source: "playground",
+          budget,
+          onEvent: (event, data) => send(event, data),
+        });
+      } catch (e) {
+        if (e instanceof BillingLimitError) {
+          send("error", { message: e.message, code: e.code });
+          return;
+        }
+        send("error", { message: String(e) });
+        throw e;
+      }
     });
-  });
+  } catch (e) {
+    const denied = billingLimitResponse(c, e);
+    if (denied) return denied;
+    throw e;
+  }
 });
 
 app.all("/mcp/:slug", async (c) => {
@@ -331,13 +353,19 @@ app.all("/mcp/:slug", async (c) => {
   const agent = platform.registry.get(c.req.param("slug"), auth.orgId);
   if (!agent || !isEnabled(agent, "mcp")) return c.json({ error: "not found" }, 404);
 
-  const budget = await resolveBudget(auth.orgId);
-  const res = await handleMcpHttp(
-    agent,
-    { dispatch: platform.dispatch, orgId: auth.orgId, budget },
-    c.req.raw,
-  );
-  return res;
+  try {
+    await platform.billing.assertCanRun(auth.orgId, agent.distribute);
+    const budget = await resolveBudget(auth.orgId);
+    return await handleMcpHttp(
+      agent,
+      { dispatch: platform.dispatch, orgId: auth.orgId, budget },
+      c.req.raw,
+    );
+  } catch (e) {
+    const denied = billingLimitResponse(c, e);
+    if (denied) return denied;
+    throw e;
+  }
 });
 
 app.get("/v1/agents/:slug/runs/:runId", async (c) => {

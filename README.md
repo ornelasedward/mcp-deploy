@@ -44,6 +44,8 @@ psql $DATABASE_URL -f packages/db/migrations/0001_handler_path.sql
 psql $DATABASE_URL -f packages/db/migrations/0002_auth.sql
 psql $DATABASE_URL -f packages/db/migrations/0003_runs_agent_slug.sql
 psql $DATABASE_URL -f packages/db/migrations/0004_public_playground.sql
+psql $DATABASE_URL -f packages/db/migrations/0005_secrets.sql
+psql $DATABASE_URL -f packages/db/migrations/0006_billing.sql
 
 export TRACE_STORE=postgres
 export ARTIFACTS_DIR=.artifacts
@@ -157,3 +159,5 @@ Full phased plan: **[PLAN.md](./PLAN.md)** — P0–P14 from shippable SaaS (git
 Interfaces are fixed; smoke test is the regression net.
 
 **CI (GitHub Actions):** `.github/workflows/ci.yml` — `pnpm smoke` (local + E2B mock matrix), web build, Helm lint. Uses `packageManager` from `package.json` (`pnpm@11.3.0`). Optional: `.github/workflows/e2e.yml` on PRs touching runtime code.
+
+**Cursor AI:** Project rules in `.cursor/rules/` and skills in `.cursor/skills/` — see [docs/CURSOR_AI.md](./docs/CURSOR_AI.md) (curated from awesome-cursorrules + awesome-cursor-skills).
